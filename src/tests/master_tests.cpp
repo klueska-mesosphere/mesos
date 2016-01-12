@@ -3917,6 +3917,191 @@ TEST_F(MasterTest, FrameworksEndpointOneFramework)
   Shutdown();
 }
 
+
+// Test the max_completed_frameworks flag for master. We test to verify that
+// the proper amount of history is maintained at interesting values in the
+// range [0 .. 2]. By launching exactly 2 frameworks at every iteration, this
+// covers the cases of maintaining 0 history, some history less than the total
+// number of frameworks launched, and history equal to the total number of
+// frameworks launched.
+TEST_F(MasterTest, MaxCompletedFrameworksFlag)
+{
+  // Value specifying the total number of frameworks to launch at each
+  // iteration of the loop. We always launch the same number of frameworks, but
+  // then verify that our history of completed frameworks is limited by the
+  // values in the array below.
+  const size_t totalFrameworks = 2;
+
+  // Array specifying the maximum number of completed frameworks to track in
+  // the master. Later we will iterate through this array and verify that the
+  // master does not keep state for more than the number of completed
+  // frameworks specified.
+  const size_t maxFrameworksArray[] = {0, 1, 2};
+
+  foreach (const size_t maxFrameworks, maxFrameworksArray) {
+    master::Flags masterFlags = CreateMasterFlags();
+    masterFlags.max_completed_frameworks = maxFrameworks;
+
+    Try<PID<Master>> master = StartMaster(masterFlags);
+    ASSERT_SOME(master);
+
+    Try<PID<Slave>> slave = StartSlave();
+    ASSERT_SOME(slave);
+
+    for (size_t i = 0; i < totalFrameworks; i++) {
+      MockScheduler sched;
+      MesosSchedulerDriver schedDriver(
+          &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+
+      // Ignore any incoming resource offers to the scheduler.
+      EXPECT_CALL(sched, resourceOffers(_, _))
+        .WillRepeatedly(Return());
+
+      Future<Nothing> schedRegistered;
+      EXPECT_CALL(sched, registered(_, _, _))
+        .WillOnce(FutureSatisfy(&schedRegistered));
+
+      schedDriver.start();
+
+      AWAIT_READY(schedRegistered);
+
+      schedDriver.stop();
+      schedDriver.join();
+    }
+
+    Future<process::http::Response> response =
+      process::http::get(master.get(), "state");
+    AWAIT_READY(response);
+
+    Try<JSON::Object> parse = JSON::parse<JSON::Object>(response->body);
+    ASSERT_SOME(parse);
+    JSON::Object state = parse.get();
+
+    // Count the number of completed frameworks and verify that it is always
+    // limited by the value of maxFrameworks.
+    Result<JSON::Array> completedFrameworks =
+      state.values["completed_frameworks"].as<JSON::Array>();
+
+    EXPECT_EQ(maxFrameworks, completedFrameworks->values.size());
+
+    Stop(slave.get());
+    Stop(master.get());
+  }
+}
+
+
+// Test the max_completed_tasks_per_framework flag for master. We test to
+// verify that the proper amount of history is maintained at interesting values
+// in the range [0 .. 2]. By launching a single framework with exactly 2 tasks
+// at every iteration, this covers the cases of maintaining 0 history, some
+// history less than the total number of tasks launched, and history equal to
+// the total number of tasks launched.
+TEST_F(MasterTest, MaxCompletedTasksPerFrameworkFlag)
+{
+  // Value specifying the total number of tasks per framework to launch at each
+  // iteration of the loop. We always launch a single framework with this fixed
+  // number of tasks. We then verify that our history of completed tasks for
+  // this framework is limited by the values in the array below.
+  const size_t totalTasksPerFramework = 2;
+
+  // Array specifying the maximum number of completed tasks per framework to
+  // track in the master. Later we will iterate through this array and verify
+  // that the master does not keep state for more than the number of completed
+  // tasks per framework specified.
+  const size_t maxTasksPerFrameworkArray[] = { 0, 1, 2};
+
+  foreach (const size_t maxTasksPerFramework, maxTasksPerFrameworkArray) {
+    master::Flags masterFlags = CreateMasterFlags();
+    masterFlags.max_completed_tasks_per_framework = maxTasksPerFramework;
+
+    Try<PID<Master>> master = StartMaster(masterFlags);
+    ASSERT_SOME(master);
+
+    MockExecutor exec(DEFAULT_EXECUTOR_ID);
+    EXPECT_CALL(exec, registered(_, _, _, _));
+
+    Try<PID<Slave>> slave = StartSlave(&exec);
+    ASSERT_SOME(slave);
+
+    MockScheduler sched;
+    MesosSchedulerDriver schedDriver(
+        &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+
+    Future<Nothing> schedRegistered;
+    EXPECT_CALL(sched, registered(_, _, _))
+      .WillOnce(FutureSatisfy(&schedRegistered));
+
+    schedDriver.start();
+
+    AWAIT_READY(schedRegistered);
+
+    for (size_t i = 0; i < totalTasksPerFramework; i++) {
+      // Wait for exactly one offer and ignore all others.
+      Future<vector<Offer>> offers;
+      EXPECT_CALL(sched, resourceOffers(&schedDriver, _))
+        .WillOnce(FutureArg<1>(&offers))
+        .WillRepeatedly(Return());
+
+      AWAIT_READY(offers);
+      EXPECT_NE(0u, offers->size());
+      Offer offer = offers.get()[0];
+
+      TaskInfo task;
+      task.set_name("");
+      task.mutable_task_id()->set_value(stringify(i));
+      task.mutable_slave_id()->MergeFrom(offer.slave_id());
+      task.mutable_resources()->MergeFrom(offer.resources());
+      task.mutable_executor()->MergeFrom(DEFAULT_EXECUTOR_INFO);
+
+      // Make sure the task passes through its TASK_FINISHED state properly. We
+      // force this state change through the launchTask() callback on our
+      // MockExecutor.
+      Future<TaskStatus> statusFinished;
+      EXPECT_CALL(exec, launchTask(_, _))
+        .WillOnce(SendStatusUpdateFromTask(TASK_FINISHED));
+      EXPECT_CALL(sched, statusUpdate(_, _))
+        .WillOnce(FutureArg<1>(&statusFinished));
+
+      schedDriver.launchTasks(offer.id(), {task});
+
+      AWAIT_READY(statusFinished);
+      EXPECT_EQ(TASK_FINISHED, statusFinished->state());
+    }
+
+    EXPECT_CALL(exec, shutdown(_))
+      .Times(AtMost(1));
+
+    schedDriver.stop();
+    schedDriver.join();
+
+    Future<process::http::Response> response =
+      process::http::get(master.get(), "state");
+    AWAIT_READY(response);
+
+    Try<JSON::Object> parse = JSON::parse<JSON::Object>(response->body);
+    ASSERT_SOME(parse);
+    JSON::Object state = parse.get();
+
+    // Count the number of completed frameworks and verify that it is 1.
+    Result<JSON::Array> completedFrameworks =
+      state.values["completed_frameworks"].as<JSON::Array>();
+
+    ASSERT_EQ(1u, completedFrameworks->values.size());
+
+    // Count the number of completed tasks in the completed framework and
+    // verify that it doesn't exceed the maximum specified by our flags.
+    JSON::Object completedFramework =
+      completedFrameworks->values[0].as<JSON::Object>();
+    Result<JSON::Array> completedTasksPerFramework =
+      completedFramework.values["completed_tasks"].as<JSON::Array>();
+
+    EXPECT_EQ(maxTasksPerFramework, completedTasksPerFramework->values.size());
+
+    Stop(slave.get());
+    Stop(master.get());
+  }
+}
+
 } // namespace tests {
 } // namespace internal {
 } // namespace mesos {
