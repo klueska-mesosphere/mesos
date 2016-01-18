@@ -1236,7 +1236,7 @@ void Master::_exited(Framework* framework)
             << failoverTimeout << " to failover";
 
   // Delay dispatching a message to ourselves for the timeout.
-  delay(failoverTimeout,
+  delay(failoverTimeout + Seconds(1),
         self(),
         &Master::frameworkFailoverTimeout,
         framework->id(),
