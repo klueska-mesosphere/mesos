@@ -2516,6 +2516,7 @@ void ProcessManager::resume(ProcessBase* process)
   while (!terminate && !blocked) {
     Event* event = NULL;
 
+    usleep(3000);
     synchronized (process->mutex) {
       if (process->events.size() > 0) {
         event = process->events.front();
