@@ -1925,8 +1925,9 @@ Status MesosSchedulerDriver::join()
 
 Status MesosSchedulerDriver::run()
 {
-  Status status = start();
-  return status != DRIVER_RUNNING ? status : join();
+  start();
+  join();
+  return status;
 }
 
 
