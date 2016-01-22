@@ -39,7 +39,11 @@
 namespace process {
 
 // Forward declaration.
+class Help;
 class Sequence;
+
+// Reference to a global Help process.
+extern PID<Help> help;
 
 namespace firewall {
 

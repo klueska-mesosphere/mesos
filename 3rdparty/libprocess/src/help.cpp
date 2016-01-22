@@ -130,6 +130,27 @@ bool Help::remove(const string& id)
 }
 
 
+Option<string> Help::get(const string& id, const string& name)
+{
+  if (id != "help" && id != "__processes__") {
+    // Verify that helps[id] exists.
+    if (helps.find(id) != helps.end()) {
+      // Verify that helps[id][name] exists.
+      if (helps[id].find(name) != helps[id].end()) {
+        return helps[id][name];
+      }
+    }
+  }
+  return None();
+}
+
+
+map<string, map<string, string>> Help::get()
+{
+  return helps;
+}
+
+
 void Help::initialize()
 {
   route("/", None(), &Help::help);

@@ -103,6 +103,17 @@ public:
   // Remove all previously installed 'help' strings for '/id/*'.
   bool remove(const std::string& id);
 
+  // Returns the previously installed 'help' string for the route 'name'
+  // of the process with the specified 'id' (i.e.,
+  // http://ip:port/id/name).  If no help string is installed for the
+  // {'id', 'name'} pair, a None() object is returned.
+  Option<std::string> get(const std::string& id, const std::string& name);
+
+  // Returns a map of the previously installed 'help' strings for all
+  // routes with the {'name', 'id'} pair from the route
+  // 'http://ip:port/id/name'.
+  std::map<std::string, std::map<std::string, std::string>> get();
+
 protected:
   virtual void initialize();
 
