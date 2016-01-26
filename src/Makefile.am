@@ -1090,6 +1090,11 @@ mesos_local_SOURCES = local/main.cpp
 mesos_local_CPPFLAGS = $(MESOS_CPPFLAGS)
 mesos_local_LDADD = libmesos.la $(LDADD)
 
+pkglibexec_PROGRAMS += mesos-endpoint-docs
+mesos_endpoint_docs_SOURCES = ../support/endpoint-docs.cpp
+mesos_endpoint_docs_CPPFLAGS = $(MESOS_CPPFLAGS)
+mesos_endpoint_docs_LDADD = libmesos.la $(LDADD)
+
 pkglibexec_PROGRAMS += mesos-fetcher
 mesos_fetcher_SOURCES = launcher/fetcher.cpp
 mesos_fetcher_CPPFLAGS = $(MESOS_CPPFLAGS)
