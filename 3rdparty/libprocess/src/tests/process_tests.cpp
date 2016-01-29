@@ -22,11 +22,13 @@
 #include <atomic>
 #include <sstream>
 #include <string>
+#include <map>
 #include <tuple>
 #include <vector>
 
 #include <process/async.hpp>
 #include <process/clock.hpp>
+#include <process/collect.hpp>
 #include <process/defer.hpp>
 #include <process/delay.hpp>
 #include <process/dispatch.hpp>
@@ -36,6 +38,7 @@
 #include <process/gc.hpp>
 #include <process/gmock.hpp>
 #include <process/gtest.hpp>
+#include <process/help.hpp>
 #include <process/network.hpp>
 #include <process/owned.hpp>
 #include <process/process.hpp>
@@ -68,6 +71,7 @@ using process::Executor;
 using process::ExitedEvent;
 using process::Failure;
 using process::Future;
+using process::Help;
 using process::Message;
 using process::MessageEncoder;
 using process::MessageEvent;
@@ -87,6 +91,8 @@ using process::firewall::FirewallRule;
 using process::network::Address;
 using process::network::Socket;
 
+using std::list;
+using std::map;
 using std::move;
 using std::string;
 using std::vector;
@@ -1835,6 +1841,10 @@ TEST(ProcessTest, PercentEncodedURLs)
 class HTTPEndpointProcess : public Process<HTTPEndpointProcess>
 {
 public:
+  static const string HANDLER1_HELP_TEXT() { return "Handler 1 help text."; };
+  static const string HANDLER2_HELP_TEXT() { return "Handler 2 help text."; };
+  static const string HANDLER3_HELP_TEXT() { return "Handler 3 help text."; };
+
   explicit HTTPEndpointProcess(const std::string& id)
     : ProcessBase(id) {}
 
@@ -1842,15 +1852,15 @@ public:
   {
     route(
         "/handler1",
-        None(),
+        HANDLER1_HELP_TEXT(),
         &HTTPEndpointProcess::handler1);
     route(
         "/handler2",
-        None(),
+        HANDLER2_HELP_TEXT(),
         &HTTPEndpointProcess::handler2);
     route(
         "/handler3",
-        None(),
+        HANDLER3_HELP_TEXT(),
         &HTTPEndpointProcess::handler3);
   }
 
@@ -1999,6 +2009,146 @@ TEST(ProcessTest, FirewallUninstall)
   EXPECT_EQ(http::Status::string(http::Status::OK),
             response->status);
 
+  terminate(process);
+  wait(process);
+}
+
+
+// Test that we can properly add/get/remove strings from the global help
+// process.
+TEST(ProcessTest, AddGetRemoveEndpointsHelp)
+{
+  const string id = "testprocess";
+
+  vector<string> handlerHelps = {
+    HTTPEndpointProcess::HANDLER1_HELP_TEXT(),
+    HTTPEndpointProcess::HANDLER2_HELP_TEXT(),
+    HTTPEndpointProcess::HANDLER3_HELP_TEXT(),
+  };
+
+  HTTPEndpointProcess process(id);
+
+  PID<HTTPEndpointProcess> pid = spawn(process);
+
+  // Wait for testprocess to be initialized by injecting a dummy lambda
+  // into its event queue and waiting for it to be processed. After it
+  // is initialized it's help strings will be ready for extraction from
+  // the global process::help process.
+  lambda::function<Future<Nothing>()> func = []() { return Nothing(); };
+  Future<Nothing> initialized = dispatch(pid, func);
+  AWAIT_READY(initialized);
+
+  // Grab the individual help strings for each of testprocess's routes
+  // and verify that they are correct.
+  vector<Future<Option<string>>> futures = {
+    dispatch(process::help, &Help::get, id, "/handler1"),
+    dispatch(process::help, &Help::get, id, "/handler2"),
+    dispatch(process::help, &Help::get, id, "/handler3")
+  };
+
+  AWAIT_READY(collect(futures[0], futures[1], futures[2]));
+
+  for (int i = 0; i < 3; i++) {
+    ASSERT_TRUE(futures[i]->isSome());
+
+    // We need to extact the substring from the end of what gets returned
+    // because the help process prepends extra text to it.
+    string value = futures[i]->get();
+    value = value.substr(value.length() - handlerHelps[i].length());
+
+    EXPECT_EQ(handlerHelps[i], value);
+  }
+
+  // Grab a bogus endpoint's help string and verify we get nothing back.
+  Future<Option<string>> bogusEndpoint =
+    dispatch(process::help, &Help::get, id, "/bogus");
+
+  AWAIT_READY(bogusEndpoint);
+
+  ASSERT_FALSE(bogusEndpoint->isSome());
+
+  // Grab an enpdoint from a bogus 'id' and verify we get nothing back.
+  Future<Option<string>> bogusId =
+    dispatch(process::help, &Help::get, "bogus", "/handler1");
+
+  AWAIT_READY(bogusId);
+
+  ASSERT_FALSE(bogusId->isSome());
+
+  // Grab the entire help strings map.
+  Future<map<string, map<string, string>>> allStrings =
+    dispatch(process::help, &Help::get);
+
+  AWAIT_READY(allStrings);
+
+  map<string, map<string, string>> helps = allStrings.get();
+
+  // Verify the endpoint strings in the map are valid. Start by
+  // verifying that we can index into the map properly.
+  ASSERT_TRUE(helps.find(id) != helps.end());
+
+  // Check each endpoint separately. We need to use the same substring
+  // trick as above to get at the installed help string.
+  for (int i = 0; i < 3; i++) {
+    string name = "/handler" + stringify(i + 1);
+
+    ASSERT_TRUE(helps[id].find(name) != helps[id].end());
+
+    string value = helps[id][name];
+    value = value.substr(value.length() - handlerHelps[i].length());
+
+    EXPECT_EQ(handlerHelps[i], value);
+
+    // Also verify that the help string for the 'help' endpoint is
+    // installed properly as well.
+    ASSERT_TRUE(helps["helps"].find("/" + id) != helps[id].end());
+  }
+
+
+  // Remove the '/handler1' help string and verify it's gone.
+  Future<Try<Nothing>> attempt =
+    dispatch(process::help, &Help::remove, id, "/handler1");
+
+  AWAIT_READY(attempt);
+
+  ASSERT_TRUE(attempt->isSome());
+
+  Future<Option<string>> noHelp =
+    dispatch(process::help, &Help::get, id, "/handler1");
+
+  AWAIT_READY(noHelp);
+
+  ASSERT_TRUE(noHelp->isNone());
+
+  // Verify that trying to remove the same string a second time fails.
+  Future<Try<Nothing>> badAttempt =
+    dispatch(process::help, &Help::remove, id, "/handler1");
+
+  AWAIT_READY(badAttempt);
+
+  ASSERT_TRUE(badAttempt->isError());
+
+  // Remove all remaining help strings for 'testprocess' and verify they
+  // are gone.
+  Future<Try<Nothing>> fullAttempt =
+    dispatch(process::help, &Help::remove, id);
+
+  AWAIT_READY(fullAttempt);
+
+  ASSERT_TRUE(fullAttempt->isSome());
+
+  Future<map<string, map<string, string>>> noStrings =
+    dispatch(process::help, &Help::get);
+
+  AWAIT_READY(noStrings);
+
+  ASSERT_TRUE(noStrings->find(id) == noStrings->end());
+
+  // Also verify that all help strings for the 'help' endpoint are gone
+  // as well.
+  ASSERT_TRUE(helps["helps"].find("/" + id) == helps["helps"].end());
+
+  // We are done.
   terminate(process);
   wait(process);
 }
