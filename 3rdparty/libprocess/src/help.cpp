@@ -31,6 +31,7 @@
 #include <stout/stringify.hpp>
 #include <stout/strings.hpp>
 
+using std::map;
 using std::string;
 using std::vector;
 
@@ -98,6 +99,34 @@ void Help::add(
 
     route("/" + id, "Help for " + id, &Help::help);
   }
+}
+
+
+bool Help::remove(const string& id, const string& name)
+{
+  if (helps.count(id) == 0 || helps[id].count(name) == 0) {
+    return false;
+  }
+
+  helps[id].erase(name);
+
+  if (helps[id].size() == 0) {
+    helps.erase(id);
+  }
+
+  return true;
+}
+
+
+bool Help::remove(const string& id)
+{
+  if (helps.count(id) == 0) {
+    return false;
+  }
+
+  helps.erase(id);
+
+  return true;
 }
 
 
