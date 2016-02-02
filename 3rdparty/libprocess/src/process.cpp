@@ -57,6 +57,7 @@
 #include <process/address.hpp>
 #include <process/check.hpp>
 #include <process/clock.hpp>
+#include <process/collect.hpp>
 #include <process/defer.hpp>
 #include <process/delay.hpp>
 #include <process/dispatch.hpp>
@@ -2627,6 +2628,9 @@ void ProcessManager::cleanup(ProcessBase* process)
     events.pop_front();
     delete event;
   }
+
+  // Remove help strings for all installed routes for this process.
+  await(dispatch(help, &Help::remove, process->pid));
 
   // Possible gate non-libprocess threads are waiting at.
   Gate* gate = NULL;
