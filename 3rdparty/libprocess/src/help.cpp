@@ -193,6 +193,20 @@ Future<http::Response> Help::help(const http::Request& request)
   string references;
 
   if (id.isNone()) {             // http://ip:port/help
+    // If the request query string has format=json, return the JSON
+    // representation of the helps strings.
+    //
+    // NOTE: We avoided relying on the 'Accept' header to specify the
+    // format because if users are hitting the endpoint from a browser
+    // it is difficult to change the 'Accept' header.
+    //
+    // TODO(klueska): add the ability for all /help/* endpoints to be
+    // returned as json, not just /help
+    if (request.url.query.get("format") == Some("json")) {
+      http::Response response = http::OK(jsonify(*this));
+      return response;
+    }
+
     document += "## HELP\n";
     foreachkey (const string& id, helps) {
       document += "> [/" + id + "][" + id + "]\n";
