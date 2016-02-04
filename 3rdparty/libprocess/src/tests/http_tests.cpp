@@ -180,6 +180,101 @@ TEST(HTTPTest, Endpoints)
 }
 
 
+TEST(HTTPTest, EndpointsHelp)
+{
+  http::URL url;
+  Future<http::Response> response;
+
+  // Start up a new HttpProcess;
+  Http http;
+  PID<HttpProcess> pid = http.process->self();
+
+  // Hit '/help' and wait for a 200 OK response.
+  url = http::URL(
+      "http",
+      http.process->self().address.ip,
+      http.process->self().address.port,
+      "/help");
+
+  response = http::get(url);
+
+  AWAIT_READY(response);
+  ASSERT_EQ(http::Status::OK, response->code);
+  ASSERT_EQ(http::Status::string(http::Status::OK), response->status);
+
+  // Hit '/help?format=json' and wait for a 200 OK response.
+  url = http::URL(
+      "http",
+      http.process->self().address.ip,
+      http.process->self().address.port,
+      "/help",
+      {{"format", "json"}});
+
+  response = http::get(url);
+
+  AWAIT_READY(response);
+  ASSERT_EQ(http::Status::OK, response->code);
+  ASSERT_EQ(http::Status::string(http::Status::OK), response->status);
+
+  // Assert that it is valid JSON
+  ASSERT_TRUE(JSON::parse(response->body).isSome());
+
+  // Hit '/help/<id>/body' and wait for a 200 OK response.
+  url = http::URL(
+      "http",
+      http.process->self().address.ip,
+      http.process->self().address.port,
+      "/help/" + pid.id + "/body");
+
+  response = http::get(url);
+
+  AWAIT_READY(response);
+  ASSERT_EQ(http::Status::OK, response->code);
+  ASSERT_EQ(http::Status::string(http::Status::OK), response->status);
+}
+
+
+TEST(HTTPTest, EndpointsHelpRemoval)
+{
+  http::URL url;
+  Future<http::Response> response;
+
+  // Start up a new HttpProcess;
+  Http* http = new Http();
+  PID<HttpProcess> pid = http->process->self();
+
+  // Hit '/help/<id>/body' and wait for a 200 OK response.
+  url = http::URL(
+      "http",
+      http->process->self().address.ip,
+      http->process->self().address.port,
+      "/help/" + pid.id + "/body");
+
+  response = http::get(url);
+
+  AWAIT_READY(response);
+  ASSERT_EQ(http::Status::OK, response->code);
+  ASSERT_EQ(http::Status::string(http::Status::OK), response->status);
+
+  // Delete the HttpProcess. This should remove all help endpoints for
+  // the process, in addition to its own endpoints.
+  delete http;
+
+  // Hit '/help/<id>/bogus' and wait for a 400 BAD REQUEST response.
+  url = http::URL(
+      "http",
+      process::address().ip,
+      process::address().port,
+      "/help/" + pid.id + "/bogus");
+
+  response = http::get(url);
+
+  AWAIT_READY(response);
+  ASSERT_EQ(http::Status::BAD_REQUEST, response->code);
+  ASSERT_EQ(http::Status::string(http::Status::BAD_REQUEST), response->status);
+}
+
+
 TEST(HTTPTest, PipeEOF)
 {
   http::Pipe pipe;
