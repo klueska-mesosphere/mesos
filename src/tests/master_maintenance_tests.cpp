@@ -373,30 +373,31 @@ TEST_F(MasterMaintenanceTest, FailToUnscheduleDeactivatedMachines)
 // slave is scheduled to go down for maintenance.
 TEST_F(MasterMaintenanceTest, PendingUnavailabilityTest)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  // NOTE: The callbacks and event queue must be stack allocated below
+  // the master, as the master may send heartbeats during destruction.
+  Callbacks callbacks;
+  Queue<Event> events;
+
+  Owned<cluster::Master> master = StartMaster();
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
+  TestContainerizer containerizer(&exec);
 
-  Try<PID<Slave>> slave = StartSlave(&exec);
-  ASSERT_SOME(slave);
-
-  Callbacks callbacks;
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), &containerizer);
 
   Future<Nothing> connected;
   EXPECT_CALL(callbacks, connected())
     .WillOnce(FutureSatisfy(&connected));
 
   Mesos mesos(
-      master.get(),
+      master->pid,
       ContentType::PROTOBUF,
       lambda::bind(&Callbacks::connected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::disconnected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::received, lambda::ref(callbacks), lambda::_1));
 
   AWAIT_READY(connected);
-
-  Queue<Event> events;
 
   EXPECT_CALL(callbacks, received(_))
     .WillRepeatedly(Enqueue(&events));
@@ -431,7 +432,7 @@ TEST_F(MasterMaintenanceTest, PendingUnavailabilityTest)
   // Schedule this slave for maintenance.
   MachineID machine;
   machine.set_hostname(maintenanceHostname);
-  machine.set_ip(stringify(slave.get().address.ip));
+  machine.set_ip(stringify(slave->pid.address.ip));
 
   const Time start = Clock::now() + Seconds(60);
   const Duration duration = Seconds(120);
@@ -446,7 +447,7 @@ TEST_F(MasterMaintenanceTest, PendingUnavailabilityTest)
   // a maintenance schedule update.  This update will also trigger the
   // rescinding of offers from the scheduled slave.
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -488,8 +489,6 @@ TEST_F(MasterMaintenanceTest, PendingUnavailabilityTest)
 
   EXPECT_CALL(exec, shutdown(_))
     .Times(AtMost(1));
-
-  Shutdown(); // Must shutdown before 'containerizer' gets deallocated.
 }
 
 
@@ -1033,19 +1032,24 @@ TEST_F(MasterMaintenanceTest, MachineStatus)
 // in the maintenance status endpoint.
 TEST_F(MasterMaintenanceTest, InverseOffers)
 {
+  // NOTE: The callbacks and event queue must be stack allocated below
+  // the master, as the master may send heartbeats during destruction.
+  Callbacks callbacks;
+  Queue<Event> events;
+
   // Set up a master.
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
+  TestContainerizer containerizer(&exec);
 
-  Try<PID<Slave>> slave = StartSlave(&exec);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), &containerizer);
 
   // Before starting any frameworks, put the one machine into `DRAINING` mode.
   MachineID machine;
   machine.set_hostname(maintenanceHostname);
-  machine.set_ip(stringify(slave.get().address.ip));
+  machine.set_ip(stringify(slave->pid.address.ip));
 
   const Time start = Clock::now() + Seconds(60);
   const Duration duration = Seconds(120);
@@ -1055,7 +1059,7 @@ TEST_F(MasterMaintenanceTest, InverseOffers)
       {createWindow({machine}, unavailability)});
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -1064,7 +1068,7 @@ TEST_F(MasterMaintenanceTest, InverseOffers)
 
   // Sanity check that this machine shows up in the status endpoint
   // and there should be no inverse offer status.
-  response = process::http::get(master.get(), "maintenance/status");
+  response = process::http::get(master->pid, "maintenance/status");
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
 
   Try<JSON::Object> statuses_ = JSON::parse<JSON::Object>(response.get().body);
@@ -1081,22 +1085,18 @@ TEST_F(MasterMaintenanceTest, InverseOffers)
   ASSERT_EQ(0, statuses.get().draining_machines(0).statuses().size());
 
   // Now start a framework.
-  Callbacks callbacks;
-
   Future<Nothing> connected;
   EXPECT_CALL(callbacks, connected())
     .WillOnce(FutureSatisfy(&connected));
 
   Mesos mesos(
-      master.get(),
+      master->pid,
       ContentType::PROTOBUF,
       lambda::bind(&Callbacks::connected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::disconnected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::received, lambda::ref(callbacks), lambda::_1));
 
   AWAIT_READY(connected);
-
-  Queue<Event> events;
 
   EXPECT_CALL(callbacks, received(_))
     .WillRepeatedly(Enqueue(&events));
@@ -1215,7 +1215,7 @@ TEST_F(MasterMaintenanceTest, InverseOffers)
   inverseOffer = event.get().offers().inverse_offers(0);
 
   // Check that the status endpoint shows the inverse offer as declined.
-  response = process::http::get(master.get(), "maintenance/status");
+  response = process::http::get(master->pid, "maintenance/status");
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
 
   statuses_ = JSON::parse<JSON::Object>(response.get().body);
@@ -1263,7 +1263,7 @@ TEST_F(MasterMaintenanceTest, InverseOffers)
   EXPECT_EQ(1, event.get().offers().inverse_offers().size());
 
   // Check that the status endpoint shows the inverse offer as accepted.
-  response = process::http::get(master.get(), "maintenance/status");
+  response = process::http::get(master->pid, "maintenance/status");
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
 
   statuses_ = JSON::parse<JSON::Object>(response.get().body);
@@ -1288,20 +1288,22 @@ TEST_F(MasterMaintenanceTest, InverseOffers)
 
   EXPECT_CALL(exec, shutdown(_))
     .Times(AtMost(1));
-
-  Shutdown(); // Must shutdown before 'containerizer' gets deallocated.
 }
 
 
 // Test ensures that inverse offers support filters.
 TEST_F(MasterMaintenanceTest, InverseOffersFilters)
 {
+  // NOTE: The callbacks and event queue must be stack allocated below
+  // the master, as the master may send heartbeats during destruction.
+  Callbacks callbacks;
+  Queue<Event> events;
+
   // Set up a master.
   // NOTE: We don't use `StartMaster()` because we need to access these flags.
   master::Flags flags = CreateMasterFlags();
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   ExecutorInfo executor1 = CREATE_EXECUTOR_INFO("executor-1", "exit 1");
   ExecutorInfo executor2 = CREATE_EXECUTOR_INFO("executor-2", "exit 2");
@@ -1329,11 +1331,12 @@ TEST_F(MasterMaintenanceTest, InverseOffersFilters)
 
   // Capture the registration message for the first slave.
   Future<SlaveRegisteredMessage> slave1RegisteredMessage =
-    FUTURE_PROTOBUF(SlaveRegisteredMessage(), master.get(), _);
+    FUTURE_PROTOBUF(SlaveRegisteredMessage(), master->pid, _);
+
+  Owned<MasterDetector> detector = master->detector();
 
   // We need two agents for this test.
-  Try<PID<Slave>> slave1 = StartSlave(&containerizer);
-  ASSERT_SOME(slave1);
+  Owned<cluster::Slave> slave1 = StartSlave(detector.get(), &containerizer);
 
   // We need to make sure the first slave registers before we schedule the
   // machine it is running on for maintenance.
@@ -1341,13 +1344,13 @@ TEST_F(MasterMaintenanceTest, InverseOffersFilters)
 
   // Capture the registration message for the second slave.
   Future<SlaveRegisteredMessage> slave2RegisteredMessage =
-    FUTURE_PROTOBUF(SlaveRegisteredMessage(), master.get(), Not(slave1.get()));
+    FUTURE_PROTOBUF(SlaveRegisteredMessage(), master->pid, Not(slave1->pid));
 
   slave::Flags slaveFlags2 = MesosTest::CreateSlaveFlags();
   slaveFlags2.hostname = maintenanceHostname + "-2";
 
-  Try<PID<Slave>> slave2 = StartSlave(&containerizer, slaveFlags2);
-  ASSERT_SOME(slave2);
+  Owned<cluster::Slave> slave2 = StartSlave(
+      detector.get(), &containerizer, slaveFlags2);
 
   // We need to make sure the second slave registers before we schedule the
   // machine it is running on for maintenance.
@@ -1356,11 +1359,11 @@ TEST_F(MasterMaintenanceTest, InverseOffersFilters)
   // Before starting any frameworks, put the first machine into `DRAINING` mode.
   MachineID machine1;
   machine1.set_hostname(maintenanceHostname);
-  machine1.set_ip(stringify(slave1.get().address.ip));
+  machine1.set_ip(stringify(slave1->pid.address.ip));
 
   MachineID machine2;
   machine2.set_hostname(slaveFlags2.hostname.get());
-  machine2.set_ip(stringify(slave2.get().address.ip));
+  machine2.set_ip(stringify(slave2->pid.address.ip));
 
   const Time start = Clock::now() + Seconds(60);
   const Duration duration = Seconds(120);
@@ -1370,7 +1373,7 @@ TEST_F(MasterMaintenanceTest, InverseOffersFilters)
       {createWindow({machine1, machine2}, unavailability)});
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -1382,22 +1385,18 @@ TEST_F(MasterMaintenanceTest, InverseOffersFilters)
   Clock::pause();
 
   // Now start a framework.
-  Callbacks callbacks;
-
   Future<Nothing> connected;
   EXPECT_CALL(callbacks, connected())
     .WillOnce(FutureSatisfy(&connected));
 
   Mesos mesos(
-      master.get(),
+      master->pid,
       ContentType::PROTOBUF,
       lambda::bind(&Callbacks::connected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::disconnected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::received, lambda::ref(callbacks), lambda::_1));
 
   AWAIT_READY(connected);
-
-  Queue<Event> events;
 
   EXPECT_CALL(callbacks, received(_))
     .WillRepeatedly(Enqueue(&events));
@@ -1645,8 +1644,6 @@ TEST_F(MasterMaintenanceTest, InverseOffersFilters)
 
   EXPECT_CALL(exec2, shutdown(_))
     .Times(AtMost(1));
-
-  Shutdown(); // Must shutdown before 'containerizer' gets deallocated.
 }
 
 } // namespace tests {

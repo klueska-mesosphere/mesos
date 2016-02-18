@@ -31,6 +31,7 @@
 #include <process/future.hpp>
 #include <process/gmock.hpp>
 #include <process/gtest.hpp>
+#include <process/owned.hpp>
 #include <process/pid.hpp>
 #include <process/queue.hpp>
 
@@ -60,6 +61,7 @@ using mesos::v1::scheduler::Mesos;
 
 using process::Clock;
 using process::Future;
+using process::Owned;
 using process::PID;
 using process::Queue;
 
@@ -121,28 +123,28 @@ ACTION_P(Enqueue, queue)
 // SUBSCRIBED event with the previously assigned framework id.
 TEST_P(SchedulerTest, Subscribe)
 {
+  // NOTE: The callbacks and event queue must be stack allocated below
+  // the master, as the master may send heartbeats during destruction.
+  Callbacks callbacks;
+  Queue<Event> events;
+
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
-
-  Callbacks callbacks;
+  Owned<cluster::Master> master = StartMaster(flags);
 
   Future<Nothing> connected;
   EXPECT_CALL(callbacks, connected())
     .WillOnce(FutureSatisfy(&connected));
 
   Mesos mesos(
-      master.get(),
+      master->pid,
       GetParam(),
       lambda::bind(&Callbacks::connected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::disconnected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::received, lambda::ref(callbacks), lambda::_1));
 
   AWAIT_READY(connected);
-
-  Queue<Event> events;
 
   EXPECT_CALL(callbacks, received(_))
     .WillRepeatedly(Enqueue(&events));
@@ -182,43 +184,41 @@ TEST_P(SchedulerTest, Subscribe)
   AWAIT_READY(event);
   EXPECT_EQ(Event::SUBSCRIBED, event.get().type());
   EXPECT_EQ(id, event.get().subscribed().framework_id());
-
-  Shutdown();
 }
 
 
 TEST_P(SchedulerTest, TaskRunning)
 {
+  // NOTE: The callbacks and event queue must be stack allocated below
+  // the master, as the master may send heartbeats during destruction.
+  Callbacks callbacks;
+  Queue<Event> events;
+
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   ExecutorID executorId = DEFAULT_EXECUTOR_ID;
 
   auto executor = std::make_shared<MockV1HTTPExecutor>();
   TestContainerizer containerizer(executorId, executor);
 
-  Try<PID<Slave>> slave = StartSlave(&containerizer);
-  ASSERT_SOME(slave);
-
-  Callbacks callbacks;
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), &containerizer);
 
   Future<Nothing> connected;
   EXPECT_CALL(callbacks, connected())
     .WillOnce(FutureSatisfy(&connected));
 
   Mesos mesos(
-      master.get(),
+      master->pid,
       GetParam(),
       lambda::bind(&Callbacks::connected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::disconnected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::received, lambda::ref(callbacks), lambda::_1));
 
   AWAIT_READY(connected);
-
-  Queue<Event> events;
 
   EXPECT_CALL(callbacks, received(_))
     .WillRepeatedly(Enqueue(&events));
@@ -306,43 +306,41 @@ TEST_P(SchedulerTest, TaskRunning)
 
   EXPECT_CALL(*executor, disconnected(_))
     .Times(AtMost(1));
-
-  Shutdown(); // Must shutdown before 'containerizer' gets deallocated.
 }
 
 
 TEST_P(SchedulerTest, ReconcileTask)
 {
+  // NOTE: The callbacks and event queue must be stack allocated below
+  // the master, as the master may send heartbeats during destruction.
+  Callbacks callbacks;
+  Queue<Event> events;
+
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   ExecutorID executorId = DEFAULT_EXECUTOR_ID;
 
   auto executor = std::make_shared<MockV1HTTPExecutor>();
   TestContainerizer containerizer(executorId, executor);
 
-  Try<PID<Slave>> slave = StartSlave(&containerizer);
-  ASSERT_SOME(slave);
-
-  Callbacks callbacks;
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), &containerizer);
 
   Future<Nothing> connected;
   EXPECT_CALL(callbacks, connected())
     .WillOnce(FutureSatisfy(&connected));
 
   Mesos mesos(
-      master.get(),
+      master->pid,
       GetParam(),
       lambda::bind(&Callbacks::connected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::disconnected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::received, lambda::ref(callbacks), lambda::_1));
 
   AWAIT_READY(connected);
-
-  Queue<Event> events;
 
   EXPECT_CALL(callbacks, received(_))
     .WillRepeatedly(Enqueue(&events));
@@ -432,43 +430,41 @@ TEST_P(SchedulerTest, ReconcileTask)
 
   EXPECT_CALL(*executor, disconnected(_))
     .Times(AtMost(1));
-
-  Shutdown(); // Must shutdown before 'containerizer' gets deallocated.
 }
 
 
 TEST_P(SchedulerTest, KillTask)
 {
+  // NOTE: The callbacks and event queue must be stack allocated below
+  // the master, as the master may send heartbeats during destruction.
+  Callbacks callbacks;
+  Queue<Event> events;
+
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   ExecutorID executorId = DEFAULT_EXECUTOR_ID;
 
   auto executor = std::make_shared<MockV1HTTPExecutor>();
   TestContainerizer containerizer(executorId, executor);
 
-  Try<PID<Slave>> slave = StartSlave(&containerizer);
-  ASSERT_SOME(slave);
-
-  Callbacks callbacks;
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), &containerizer);
 
   Future<Nothing> connected;
   EXPECT_CALL(callbacks, connected())
     .WillOnce(FutureSatisfy(&connected));
 
   Mesos mesos(
-      master.get(),
+      master->pid,
       GetParam(),
       lambda::bind(&Callbacks::connected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::disconnected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::received, lambda::ref(callbacks), lambda::_1));
 
   AWAIT_READY(connected);
-
-  Queue<Event> events;
 
   EXPECT_CALL(callbacks, received(_))
     .WillRepeatedly(Enqueue(&events));
@@ -575,43 +571,41 @@ TEST_P(SchedulerTest, KillTask)
 
   EXPECT_CALL(*executor, disconnected(_))
     .Times(AtMost(1));
-
-  Shutdown(); // Must shutdown before 'containerizer' gets deallocated.
 }
 
 
 TEST_P(SchedulerTest, ShutdownExecutor)
 {
+  // NOTE: The callbacks and event queue must be stack allocated below
+  // the master, as the master may send heartbeats during destruction.
+  Callbacks callbacks;
+  Queue<Event> events;
+
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   ExecutorID executorId = DEFAULT_EXECUTOR_ID;
 
   auto executor = std::make_shared<MockV1HTTPExecutor>();
   TestContainerizer containerizer(executorId, executor);
 
-  Try<PID<Slave>> slave = StartSlave(&containerizer);
-  ASSERT_SOME(slave);
-
-  Callbacks callbacks;
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), &containerizer);
 
   Future<Nothing> connected;
   EXPECT_CALL(callbacks, connected())
     .WillOnce(FutureSatisfy(&connected));
 
   Mesos mesos(
-      master.get(),
+      master->pid,
       GetParam(),
       lambda::bind(&Callbacks::connected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::disconnected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::received, lambda::ref(callbacks), lambda::_1));
 
   AWAIT_READY(connected);
-
-  Queue<Event> events;
 
   EXPECT_CALL(callbacks, received(_))
     .WillRepeatedly(Enqueue(&events));
@@ -701,43 +695,41 @@ TEST_P(SchedulerTest, ShutdownExecutor)
   AWAIT_READY(event);
   EXPECT_EQ(Event::FAILURE, event.get().type());
   EXPECT_EQ(evolve(executorId), event.get().failure().executor_id());
-
-  Shutdown(); // Must shutdown before 'containerizer' gets deallocated.
 }
 
 
 TEST_P(SchedulerTest, Teardown)
 {
+  // NOTE: The callbacks and event queue must be stack allocated below
+  // the master, as the master may send heartbeats during destruction.
+  Callbacks callbacks;
+  Queue<Event> events;
+
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   ExecutorID executorId = DEFAULT_EXECUTOR_ID;
 
   auto executor = std::make_shared<MockV1HTTPExecutor>();
   TestContainerizer containerizer(executorId, executor);
 
-  Try<PID<Slave>> slave = StartSlave(&containerizer);
-  ASSERT_SOME(slave);
-
-  Callbacks callbacks;
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), &containerizer);
 
   Future<Nothing> connected;
   EXPECT_CALL(callbacks, connected())
     .WillOnce(FutureSatisfy(&connected));
 
   Mesos mesos(
-      master.get(),
+      master->pid,
       GetParam(),
       lambda::bind(&Callbacks::connected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::disconnected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::received, lambda::ref(callbacks), lambda::_1));
 
   AWAIT_READY(connected);
-
-  Queue<Event> events;
 
   EXPECT_CALL(callbacks, received(_))
     .WillRepeatedly(Enqueue(&events));
@@ -816,38 +808,36 @@ TEST_P(SchedulerTest, Teardown)
   }
 
   AWAIT_READY(shutdown);
-
-  Shutdown(); // Must shutdown before 'containerizer' gets deallocated.
 }
 
 
 TEST_P(SchedulerTest, Decline)
 {
+  // NOTE: The callbacks and event queue must be stack allocated below
+  // the master, as the master may send heartbeats during destruction.
+  Callbacks callbacks;
+  Queue<Event> events;
+
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
-  Try<PID<Slave>> slave = StartSlave();
-  ASSERT_SOME(slave);
-
-  Callbacks callbacks;
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get());
 
   Future<Nothing> connected;
   EXPECT_CALL(callbacks, connected())
     .WillOnce(FutureSatisfy(&connected));
 
   Mesos mesos(
-      master.get(),
+      master->pid,
       GetParam(),
       lambda::bind(&Callbacks::connected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::disconnected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::received, lambda::ref(callbacks), lambda::_1));
 
   AWAIT_READY(connected);
-
-  Queue<Event> events;
 
   EXPECT_CALL(callbacks, received(_))
     .WillRepeatedly(Enqueue(&events));
@@ -897,38 +887,36 @@ TEST_P(SchedulerTest, Decline)
   EXPECT_EQ(Event::OFFERS, event.get().type());
   ASSERT_EQ(1, event.get().offers().offers().size());
   ASSERT_EQ(offer.resources(), event.get().offers().offers(0).resources());
-
-  Shutdown(); // Must shutdown before 'containerizer' gets deallocated.
 }
 
 
 TEST_P(SchedulerTest, Revive)
 {
+  // NOTE: The callbacks and event queue must be stack allocated below
+  // the master, as the master may send heartbeats during destruction.
+  Callbacks callbacks;
+  Queue<Event> events;
+
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
-  Try<PID<Slave>> slave = StartSlave();
-  ASSERT_SOME(slave);
-
-  Callbacks callbacks;
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get());
 
   Future<Nothing> connected;
   EXPECT_CALL(callbacks, connected())
     .WillOnce(FutureSatisfy(&connected));
 
   Mesos mesos(
-      master.get(),
+      master->pid,
       GetParam(),
       lambda::bind(&Callbacks::connected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::disconnected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::received, lambda::ref(callbacks), lambda::_1));
 
   AWAIT_READY(connected);
-
-  Queue<Event> events;
 
   EXPECT_CALL(callbacks, received(_))
     .WillRepeatedly(Enqueue(&events));
@@ -994,38 +982,36 @@ TEST_P(SchedulerTest, Revive)
   EXPECT_EQ(Event::OFFERS, event.get().type());
   EXPECT_NE(0, event.get().offers().offers().size());
   ASSERT_EQ(offer.resources(), event.get().offers().offers(0).resources());
-
-  Shutdown(); // Must shutdown before 'containerizer' gets deallocated.
 }
 
 
 TEST_P(SchedulerTest, Suppress)
 {
+  // NOTE: The callbacks and event queue must be stack allocated below
+  // the master, as the master may send heartbeats during destruction.
+  Callbacks callbacks;
+  Queue<Event> events;
+
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
-  Try<PID<Slave>> slave = StartSlave();
-  ASSERT_SOME(slave);
-
-  Callbacks callbacks;
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get());
 
   Future<Nothing> connected;
   EXPECT_CALL(callbacks, connected())
     .WillOnce(FutureSatisfy(&connected));
 
   Mesos mesos(
-      master.get(),
+      master->pid,
       GetParam(),
       lambda::bind(&Callbacks::connected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::disconnected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::received, lambda::ref(callbacks), lambda::_1));
 
   AWAIT_READY(connected);
-
-  Queue<Event> events;
 
   EXPECT_CALL(callbacks, received(_))
     .WillRepeatedly(Enqueue(&events));
@@ -1107,43 +1093,41 @@ TEST_P(SchedulerTest, Suppress)
   EXPECT_EQ(Event::OFFERS, event.get().type());
   EXPECT_NE(0, event.get().offers().offers().size());
   ASSERT_EQ(offer.resources(), event.get().offers().offers(0).resources());
-
-  Shutdown(); // Must shutdown before 'containerizer' gets deallocated.
 }
 
 
 TEST_P(SchedulerTest, Message)
 {
+  // NOTE: The callbacks and event queue must be stack allocated below
+  // the master, as the master may send heartbeats during destruction.
+  Callbacks callbacks;
+  Queue<Event> events;
+
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   ExecutorID executorId = DEFAULT_EXECUTOR_ID;
 
   auto executor = std::make_shared<MockV1HTTPExecutor>();
   TestContainerizer containerizer(executorId, executor);
 
-  Try<PID<Slave>> slave = StartSlave(&containerizer);
-  ASSERT_SOME(slave);
-
-  Callbacks callbacks;
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), &containerizer);
 
   Future<Nothing> connected;
   EXPECT_CALL(callbacks, connected())
     .WillOnce(FutureSatisfy(&connected));
 
   Mesos mesos(
-      master.get(),
+      master->pid,
       GetParam(),
       lambda::bind(&Callbacks::connected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::disconnected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::received, lambda::ref(callbacks), lambda::_1));
 
   AWAIT_READY(connected);
-
-  Queue<Event> events;
 
   EXPECT_CALL(callbacks, received(_))
     .WillRepeatedly(Enqueue(&events));
@@ -1234,35 +1218,33 @@ TEST_P(SchedulerTest, Message)
 
   EXPECT_CALL(*executor, disconnected(_))
     .Times(AtMost(1));
-
-  Shutdown(); // Must shutdown before 'containerizer' gets deallocated.
 }
 
 
 TEST_P(SchedulerTest, Request)
 {
+  // NOTE: The callbacks and event queue must be stack allocated below
+  // the master, as the master may send heartbeats during destruction.
+  Callbacks callbacks;
+  Queue<Event> events;
+
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
-
-  Callbacks callbacks;
+  Owned<cluster::Master> master = StartMaster(flags);
 
   Future<Nothing> connected;
   EXPECT_CALL(callbacks, connected())
     .WillOnce(FutureSatisfy(&connected));
 
   Mesos mesos(
-      master.get(),
+      master->pid,
       GetParam(),
       lambda::bind(&Callbacks::connected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::disconnected, lambda::ref(callbacks)),
       lambda::bind(&Callbacks::received, lambda::ref(callbacks), lambda::_1));
 
   AWAIT_READY(connected);
-
-  Queue<Event> events;
 
   EXPECT_CALL(callbacks, received(_))
     .WillRepeatedly(Enqueue(&events));
@@ -1299,8 +1281,6 @@ TEST_P(SchedulerTest, Request)
   }
 
   AWAIT_READY(requestResources);
-
-  Shutdown();
 }
 
 
