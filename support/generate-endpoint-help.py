@@ -44,16 +44,18 @@ AGENT_COMMAND = [
 
 
 # A header to add onto all generated markdown files.
-MARKDOWN_HEADER_TOP = (
-'---\n' +
-'title: Mesos - HTTP Endpoints - '
-)
-MARKDOWN_HEADER_BOTTOM = (
-'layout: documentation\n'+
-'---\n'+
-'<!--- This is an automatically generated file. DO NOT EDIT! --->\n'
+MARKDOWN_HEADER = (
+"""<!--- This is an automatically generated file. DO NOT EDIT! --->
+
+---
+title: %s
+layout: documentation
+---
+"""
 )
 
+# A template of the title to add onto all generated markdown files.
+MARKDOWN_TITLE = "Mesos - HTTP Endpoints%s"
 
 # A global timeout as well as a retry interval when hitting any http
 # endpoints on the master or agent (in seconds).
@@ -175,7 +177,7 @@ def get_relative_md_path(id, name):
     return os.path.join(new_id + '.md')
 
 
-def write_markdown(path, output, name=""):
+def write_markdown(path, output, title):
   """Writes 'output' to the file at 'path'."""
   print 'generating: %s' % (path)
 
@@ -184,19 +186,10 @@ def write_markdown(path, output, name=""):
     os.makedirs(dirname)
 
   outfile = open(path, 'w+')
-  title_builder = MARKDOWN_HEADER_TOP
-  title_name = name[1:]
-  if title_name == "" or title_name == " " :
-    title_builder = MARKDOWN_HEADER_TOP[:-3]
 
   # Add our header and remove all '\n's at the end of the output if
   # there are any.
-  output = title_builder + \
-    title_name + \
-    '\n' + \
-    MARKDOWN_HEADER_BOTTOM + \
-    '\n' + \
-    output.rstrip()
+  output = (MARKDOWN_HEADER % title) + '\n' + output.rstrip()
 
   outfile.write(output)
   outfile.close()
@@ -214,8 +207,7 @@ def dump_index_markdown(master_help, agent_help):
   # strings contained in the "Master Endpoints" and "Agent Endpoints"
   # sections of this template.
   output = (
-"""
-# HTTP Endpoints #
+"""# HTTP Endpoints #
 
 Below is a list of HTTP endpoints available for a given Mesos process.
 
@@ -280,7 +272,7 @@ For example, http://agent.com:5051/files/browse
                      generate_links(agent_help))
 
   path = os.path.join(options['output_path'], 'index.md')
-  write_markdown(path, output)
+  write_markdown(path, output, MARKDOWN_TITLE % "")
 
 
 def dump_markdown(help):
@@ -294,10 +286,11 @@ def dump_markdown(help):
     for endpoint in process['endpoints']:
       name = endpoint['name']
       text = endpoint['text']
+      title = get_endpoint_path(id, name)
 
       relative_path = get_relative_md_path(id, name)
       path = os.path.join(options['output_path'], relative_path)
-      write_markdown(path, text, name)
+      write_markdown(path, text, MARKDOWN_TITLE % (" - " + title))
 
 
 def start_master():
