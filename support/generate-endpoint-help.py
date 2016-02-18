@@ -44,7 +44,13 @@ AGENT_COMMAND = [
 
 
 # A header to add onto all generated markdown files.
-MARKDOWN_HEADER = (
+MARKDOWN_HEADER_TOP = (
+'---\n' +
+'title: Mesos - HTTP Endpoints - '
+)
+MARKDOWN_HEADER_BOTTOM = (
+'layout: documentation\n'+
+'---\n'+
 '<!--- This is an automatically generated file. DO NOT EDIT! --->\n'
 )
 
@@ -169,7 +175,7 @@ def get_relative_md_path(id, name):
     return os.path.join(new_id + '.md')
 
 
-def write_markdown(path, output):
+def write_markdown(path, output, name=""):
   """Writes 'output' to the file at 'path'."""
   print 'generating: %s' % (path)
 
@@ -178,10 +184,19 @@ def write_markdown(path, output):
     os.makedirs(dirname)
 
   outfile = open(path, 'w+')
+  title_builder = MARKDOWN_HEADER_TOP
+  title_name = name[1:]
+  if title_name == "" or title_name == " " :
+    title_builder = MARKDOWN_HEADER_TOP[:-3]
 
   # Add our header and remove all '\n's at the end of the output if
   # there are any.
-  output = MARKDOWN_HEADER + '\n' + output.rstrip()
+  output = title_builder + \
+    title_name + \
+    '\n' + \
+    MARKDOWN_HEADER_BOTTOM + \
+    '\n' + \
+    output.rstrip()
 
   outfile.write(output)
   outfile.close()
@@ -282,7 +297,7 @@ def dump_markdown(help):
 
       relative_path = get_relative_md_path(id, name)
       path = os.path.join(options['output_path'], relative_path)
-      write_markdown(path, text)
+      write_markdown(path, text, name)
 
 
 def start_master():
