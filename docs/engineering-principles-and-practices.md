@@ -1,4 +1,5 @@
 ---
+title: Mesos - Engineering Principles And Practices
 layout: documentation
 ---
 

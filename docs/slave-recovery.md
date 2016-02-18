@@ -1,4 +1,5 @@
 ---
+title: Mesos - Slave Recovery
 layout: documentation
 ---
 

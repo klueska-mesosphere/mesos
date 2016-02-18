@@ -1,4 +1,5 @@
 ---
+title: Mesos - Testing Patterns
 layout: documentation
 ---
 

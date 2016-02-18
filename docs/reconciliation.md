@@ -1,3 +1,8 @@
+---
+title: Mesos - Reconciliation
+layout: documentation
+---
+
 # Reconciliation
 
 There's no getting around it, **frameworks on Mesos are distributed systems**.

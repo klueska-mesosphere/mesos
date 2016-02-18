@@ -1,4 +1,5 @@
 ---
+title: Mesos - ClangFormat
 layout: documentation
 ---
 

@@ -1,4 +1,5 @@
 ---
+title: Mesos - Authentication
 layout: documentation
 ---
 

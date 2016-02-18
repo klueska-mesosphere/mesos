@@ -1,4 +1,5 @@
 ---
+title: Mesos - Framework Rate Limiting
 layout: documentation
 ---
 

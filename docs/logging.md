@@ -1,4 +1,5 @@
 ---
+title: Logging
 layout: documentation
 ---
 

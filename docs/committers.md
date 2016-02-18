@@ -1,4 +1,5 @@
 ---
+title: Mesos - Committers
 layout: documentation
 ---
 

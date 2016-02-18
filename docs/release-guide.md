@@ -1,4 +1,5 @@
 ---
+title: Mesos - Release Guide
 layout: documentation
 ---
 

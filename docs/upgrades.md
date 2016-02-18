@@ -1,4 +1,5 @@
 ---
+title: Mesos - Upgrading Mesos
 layout: documentation
 ---
 

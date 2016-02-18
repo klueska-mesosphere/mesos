@@ -1,4 +1,5 @@
 ---
+title: Mesos - Committing
 layout: documentation
 ---
 

@@ -1,4 +1,5 @@
 ---
+title: Mesos - C++ Style Guide
 layout: documentation
 ---
 

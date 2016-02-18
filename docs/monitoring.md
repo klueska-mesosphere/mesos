@@ -1,4 +1,5 @@
 ---
+title: Mesos - Observability Metrics
 layout: documentation
 ---
 

@@ -1,4 +1,5 @@
 ---
+title: Documentation Home
 layout: documentation
 ---
 

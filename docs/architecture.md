@@ -1,4 +1,5 @@
 ---
+title: Mesos - Architecture
 layout: documentation
 ---
 

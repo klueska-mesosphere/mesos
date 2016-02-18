@@ -1,4 +1,5 @@
 ---
+title: Mesos - Configuration
 layout: documentation
 ---
 

@@ -1,4 +1,5 @@
 ---
+title: Mesos - Attributes and Resources
 layout: documentation
 ---
 

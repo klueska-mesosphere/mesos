@@ -1,4 +1,5 @@
 ---
+title: Mesos - Committer Candidate Checklist
 layout: documentation
 ---
 

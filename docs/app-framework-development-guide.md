@@ -1,4 +1,5 @@
 ---
+title: Mesos - Framework Development Guide
 layout: documentation
 ---
 

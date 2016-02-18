@@ -1,4 +1,5 @@
 ---
+title: Mesos - Modules
 layout: documentation
 ---
 

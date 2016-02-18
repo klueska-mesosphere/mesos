@@ -1,4 +1,5 @@
 ---
+title: Mesos - Getting Started
 layout: documentation
 ---
 

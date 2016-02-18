@@ -1,4 +1,5 @@
 ---
+title: Mesos - Versioning
 layout: documentation
 ---
 
