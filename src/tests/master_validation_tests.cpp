@@ -28,6 +28,8 @@
 #include <process/clock.hpp>
 #include <process/gmock.hpp>
 #include <process/gtest.hpp>
+#include <process/owned.hpp>
+#include <process/pid.hpp>
 
 #include <stout/gtest.hpp>
 #include <stout/strings.hpp>
@@ -38,6 +40,7 @@
 
 #include "slave/slave.hpp"
 
+#include "tests/containerizer.hpp"
 #include "tests/mesos.hpp"
 
 using namespace mesos::internal::master::validation;
@@ -50,6 +53,7 @@ using mesos::internal::slave::Slave;
 
 using process::Clock;
 using process::Future;
+using process::Owned;
 using process::PID;
 
 using std::vector;
@@ -501,18 +505,17 @@ TEST_F(CreateOperationValidationTest, InsufficientDiskResource)
   masterFlags.acls = acls;
   masterFlags.roles = "role1";
 
-  Try<PID<Master>> master = StartMaster(masterFlags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(masterFlags);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
   slaveFlags.resources = "disk(role1):1024";
 
-  Try<PID<Slave>> slave = StartSlave(slaveFlags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), slaveFlags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+      &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _));
 
@@ -566,8 +569,6 @@ TEST_F(CreateOperationValidationTest, InsufficientDiskResource)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -624,15 +625,14 @@ class TaskValidationTest : public MesosTest {};
 
 TEST_F(TaskValidationTest, TaskUsesInvalidFrameworkID)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
-  Try<PID<Slave>> slave = StartSlave();
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get());
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _));
 
@@ -658,22 +658,19 @@ TEST_F(TaskValidationTest, TaskUsesInvalidFrameworkID)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
 TEST_F(TaskValidationTest, TaskUsesCommandInfoAndExecutorInfo)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
-  Try<PID<Slave>> slave = StartSlave();
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get());
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _));
 
@@ -704,22 +701,19 @@ TEST_F(TaskValidationTest, TaskUsesCommandInfoAndExecutorInfo)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
 TEST_F(TaskValidationTest, TaskUsesNoResources)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
-  Try<PID<Slave>> slave = StartSlave();
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get());
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _))
     .Times(1);
@@ -755,22 +749,19 @@ TEST_F(TaskValidationTest, TaskUsesNoResources)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
 TEST_F(TaskValidationTest, TaskUsesMoreResourcesThanOffered)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
-  Try<PID<Slave>> slave = StartSlave();
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get());
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _))
     .Times(1);
@@ -813,8 +804,6 @@ TEST_F(TaskValidationTest, TaskUsesMoreResourcesThanOffered)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -822,17 +811,17 @@ TEST_F(TaskValidationTest, TaskUsesMoreResourcesThanOffered)
 // task ID, the second task will get rejected.
 TEST_F(TaskValidationTest, DuplicatedTaskID)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
+  TestContainerizer containerizer(&exec);
 
-  Try<PID<Slave>> slave = StartSlave(&exec);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), &containerizer);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _));
 
@@ -897,8 +886,6 @@ TEST_F(TaskValidationTest, DuplicatedTaskID)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -906,17 +893,17 @@ TEST_F(TaskValidationTest, DuplicatedTaskID)
 // the same executor id but different executor info are rejected.
 TEST_F(TaskValidationTest, ExecutorInfoDiffersOnSameSlave)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
+  TestContainerizer containerizer(&exec);
 
-  Try<PID<Slave>> slave = StartSlave(&exec);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), &containerizer);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _))
     .Times(1);
@@ -987,8 +974,6 @@ TEST_F(TaskValidationTest, ExecutorInfoDiffersOnSameSlave)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -997,12 +982,11 @@ TEST_F(TaskValidationTest, ExecutorInfoDiffersOnSameSlave)
 // allowed.
 TEST_F(TaskValidationTest, ExecutorInfoDiffersOnDifferentSlaves)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<Nothing> registered;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -1018,9 +1002,10 @@ TEST_F(TaskValidationTest, ExecutorInfoDiffersOnDifferentSlaves)
 
   // Start the first slave.
   MockExecutor exec1(DEFAULT_EXECUTOR_ID);
+  TestContainerizer containerizer1(&exec1);
 
-  Try<PID<Slave>> slave1 = StartSlave(&exec1);
-  ASSERT_SOME(slave1);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave1 = StartSlave(detector.get(), &containerizer1);
 
   AWAIT_READY(offers1);
   EXPECT_NE(0u, offers1.get().size());
@@ -1055,9 +1040,9 @@ TEST_F(TaskValidationTest, ExecutorInfoDiffersOnDifferentSlaves)
 
   // Now start the second slave.
   MockExecutor exec2(DEFAULT_EXECUTOR_ID);
+  TestContainerizer containerizer2(&exec2);
 
-  Try<PID<Slave>> slave2 = StartSlave(&exec2);
-  ASSERT_SOME(slave2);
+  Owned<cluster::Slave> slave2 = StartSlave(detector.get(), &containerizer2);
 
   AWAIT_READY(offers2);
   EXPECT_NE(0u, offers2.get().size());
@@ -1094,8 +1079,6 @@ TEST_F(TaskValidationTest, ExecutorInfoDiffersOnDifferentSlaves)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 

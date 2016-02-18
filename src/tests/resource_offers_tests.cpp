@@ -21,6 +21,10 @@
 #include <mesos/executor.hpp>
 #include <mesos/scheduler.hpp>
 
+#include <process/future.hpp>
+#include <process/owned.hpp>
+#include <process/pid.hpp>
+
 #include <stout/strings.hpp>
 
 #include "master/master.hpp"
@@ -37,6 +41,7 @@ using mesos::internal::master::Master;
 using mesos::internal::slave::Slave;
 
 using process::Future;
+using process::Owned;
 using process::PID;
 
 using std::vector;
@@ -96,15 +101,14 @@ TEST_F(ResourceOffersTest, ResourceOfferWithMultipleSlaves)
 
 TEST_F(ResourceOffersTest, ResourcesGetReofferedAfterFrameworkStops)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
-  Try<PID<Slave>> slave = StartSlave();
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get());
 
   MockScheduler sched1;
   MesosSchedulerDriver driver1(
-      &sched1, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched1, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched1, registered(&driver1, _, _))
     .Times(1);
@@ -123,7 +127,7 @@ TEST_F(ResourceOffersTest, ResourcesGetReofferedAfterFrameworkStops)
 
   MockScheduler sched2;
   MesosSchedulerDriver driver2(
-      &sched2, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched2, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched2, registered(&driver2, _, _))
     .Times(1);
@@ -137,22 +141,19 @@ TEST_F(ResourceOffersTest, ResourcesGetReofferedAfterFrameworkStops)
 
   driver2.stop();
   driver2.join();
-
-  Shutdown();
 }
 
 
 TEST_F(ResourceOffersTest, ResourcesGetReofferedWhenUnused)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
-  Try<PID<Slave>> slave = StartSlave();
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get());
 
   MockScheduler sched1;
   MesosSchedulerDriver driver1(
-      &sched1, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched1, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched1, registered(&driver1, _, _))
     .Times(1);
@@ -171,7 +172,7 @@ TEST_F(ResourceOffersTest, ResourcesGetReofferedWhenUnused)
 
   MockScheduler sched2;
   MesosSchedulerDriver driver2(
-      &sched2, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched2, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched2, registered(&driver2, _, _))
     .Times(1);
@@ -189,22 +190,19 @@ TEST_F(ResourceOffersTest, ResourcesGetReofferedWhenUnused)
 
   driver2.stop();
   driver2.join();
-
-  Shutdown();
 }
 
 
 TEST_F(ResourceOffersTest, ResourcesGetReofferedAfterTaskInfoError)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
-  Try<PID<Slave>> slave = StartSlave();
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get());
 
   MockScheduler sched1;
   MesosSchedulerDriver driver1(
-      &sched1, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched1, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched1, registered(&driver1, _, _))
     .Times(1);
@@ -254,7 +252,7 @@ TEST_F(ResourceOffersTest, ResourcesGetReofferedAfterTaskInfoError)
 
   MockScheduler sched2;
   MesosSchedulerDriver driver2(
-      &sched2, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched2, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched2, registered(&driver2, _, _))
     .Times(1);
@@ -272,8 +270,6 @@ TEST_F(ResourceOffersTest, ResourcesGetReofferedAfterTaskInfoError)
 
   driver2.stop();
   driver2.join();
-
-  Shutdown();
 }
 
 
@@ -284,12 +280,11 @@ TEST_F(ResourceOffersTest, Request)
   EXPECT_CALL(allocator, initialize(_, _, _, _))
     .Times(1);
 
-  Try<PID<Master>> master = StartMaster(&allocator);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(&allocator);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(allocator, addFramework(_, _, _))
     .Times(1);
@@ -320,8 +315,6 @@ TEST_F(ResourceOffersTest, Request)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 } // namespace tests {

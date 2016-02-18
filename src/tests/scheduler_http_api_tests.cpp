@@ -23,6 +23,7 @@
 #include <process/future.hpp>
 #include <process/gtest.hpp>
 #include <process/http.hpp>
+#include <process/owned.hpp>
 #include <process/pid.hpp>
 
 #include <stout/gtest.hpp>
@@ -49,6 +50,7 @@ using mesos::v1::scheduler::Event;
 
 using process::Clock;
 using process::Future;
+using process::Owned;
 using process::PID;
 
 using process::http::BadRequest;
@@ -126,11 +128,10 @@ TEST_F(SchedulerHttpApiTest, AuthenticationRequired)
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = true;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "api/v1/scheduler",
       None(),
       None());
@@ -146,15 +147,14 @@ TEST_F(SchedulerHttpApiTest, NoContentType)
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   // Expect a BadRequest when 'Content-Type' is omitted.
   //
   // TODO(anand): Send a valid call here to ensure that
   // the BadRequest is only due to the missing header.
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "api/v1/scheduler",
       None(),
       None());
@@ -171,8 +171,7 @@ TEST_F(SchedulerHttpApiTest, ValidJsonButInvalidProtobuf)
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   JSON::Object object;
   object.values["string"] = "valid_json";
@@ -181,7 +180,7 @@ TEST_F(SchedulerHttpApiTest, ValidJsonButInvalidProtobuf)
   headers["Accept"] = APPLICATION_JSON;
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "api/v1/scheduler",
       headers,
       stringify(object),
@@ -199,8 +198,7 @@ TEST_P(SchedulerHttpApiTest, MalformedContent)
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   const string body = "MALFORMED_CONTENT";
 
@@ -209,7 +207,7 @@ TEST_P(SchedulerHttpApiTest, MalformedContent)
   headers["Accept"] = contentType;
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "api/v1/scheduler",
       headers,
       body,
@@ -227,8 +225,7 @@ TEST_P(SchedulerHttpApiTest, UnsupportedContentMediaType)
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   const string contentType = GetParam();
   process::http::Headers headers;
@@ -243,7 +240,7 @@ TEST_P(SchedulerHttpApiTest, UnsupportedContentMediaType)
   const string unknownMediaType = "application/unknown-media-type";
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "api/v1/scheduler",
       headers,
       serialize(call, contentType),
@@ -262,8 +259,7 @@ TEST_P(SchedulerHttpApiTest, Subscribe)
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   Call call;
   call.set_type(Call::SUBSCRIBE);
@@ -277,7 +273,7 @@ TEST_P(SchedulerHttpApiTest, Subscribe)
   headers["Accept"] = contentType;
 
   Future<Response> response = process::http::streaming::post(
-      master.get(),
+      master->pid,
       "api/v1/scheduler",
       headers,
       serialize(call, contentType),
@@ -319,8 +315,6 @@ TEST_P(SchedulerHttpApiTest, Subscribe)
   ASSERT_SOME(event.get());
 
   ASSERT_EQ(Event::HEARTBEAT, event.get().get().type());
-
-  Shutdown();
 }
 
 
@@ -332,8 +326,7 @@ TEST_P(SchedulerHttpApiTest, SubscribedOnRetryWithForce)
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   Call call;
   call.set_type(Call::SUBSCRIBE);
@@ -353,7 +346,7 @@ TEST_P(SchedulerHttpApiTest, SubscribedOnRetryWithForce)
 
   {
     Future<Response> response = process::http::streaming::post(
-        master.get(),
+        master->pid,
         "api/v1/scheduler",
         headers,
         serialize(call, contentType),
@@ -386,7 +379,7 @@ TEST_P(SchedulerHttpApiTest, SubscribedOnRetryWithForce)
     subscribe->mutable_framework_info()->mutable_id()->CopyFrom(frameworkId);
 
     Future<Response> response = process::http::streaming::post(
-        master.get(),
+        master->pid,
         "api/v1/scheduler",
         headers,
         serialize(call, contentType),
@@ -413,8 +406,6 @@ TEST_P(SchedulerHttpApiTest, SubscribedOnRetryWithForce)
 
     ASSERT_EQ(Event::HEARTBEAT, event.get().get().type());
   }
-
-  Shutdown();
 }
 
 
@@ -426,15 +417,14 @@ TEST_P(SchedulerHttpApiTest, UpdatePidToHttpScheduler)
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   v1::FrameworkInfo frameworkInfo = DEFAULT_V1_FRAMEWORK_INFO;
   frameworkInfo.set_failover_timeout(Weeks(2).secs());
 
   // Start the scheduler without credentials.
   MockScheduler sched;
-  StandaloneMasterDetector detector(master.get());
+  StandaloneMasterDetector detector(master->pid);
   TestingMesosSchedulerDriver driver(&sched, &detector, devolve(frameworkInfo));
 
   Future<FrameworkID> frameworkId;
@@ -472,7 +462,7 @@ TEST_P(SchedulerHttpApiTest, UpdatePidToHttpScheduler)
   headers["Accept"] = contentType;
 
   Future<Response> response = process::http::streaming::post(
-      master.get(),
+      master->pid,
       "api/v1/scheduler",
       headers,
       serialize(call, contentType),
@@ -508,8 +498,6 @@ TEST_P(SchedulerHttpApiTest, UpdatePidToHttpScheduler)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -521,8 +509,7 @@ TEST_P(SchedulerHttpApiTest, UpdateHttpToPidScheduler)
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   v1::FrameworkInfo frameworkInfo = DEFAULT_V1_FRAMEWORK_INFO;
 
@@ -538,7 +525,7 @@ TEST_P(SchedulerHttpApiTest, UpdateHttpToPidScheduler)
   headers["Accept"] = contentType;
 
   Future<Response> response = process::http::streaming::post(
-      master.get(),
+      master->pid,
       "api/v1/scheduler",
       headers,
       serialize(call, contentType),
@@ -574,7 +561,7 @@ TEST_P(SchedulerHttpApiTest, UpdateHttpToPidScheduler)
 
   // Start PID based scheduler without credentials.
   MockScheduler sched;
-  MesosSchedulerDriver driver(&sched, devolve(frameworkInfo), master.get());
+  MesosSchedulerDriver driver(&sched, devolve(frameworkInfo), master->pid);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -584,8 +571,6 @@ TEST_P(SchedulerHttpApiTest, UpdateHttpToPidScheduler)
 
   AWAIT_READY(frameworkId);
   ASSERT_EQ(evolve(frameworkId.get()), frameworkInfo.id());
-
-  Shutdown();
 }
 
 
@@ -598,15 +583,14 @@ TEST_P(SchedulerHttpApiTest, UpdatePidToHttpSchedulerWithoutForce)
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   v1::FrameworkInfo frameworkInfo = DEFAULT_V1_FRAMEWORK_INFO;
   frameworkInfo.set_failover_timeout(Weeks(2).secs());
 
   // Start the scheduler without credentials.
   MockScheduler sched;
-  StandaloneMasterDetector detector(master.get());
+  StandaloneMasterDetector detector(master->pid);
   TestingMesosSchedulerDriver driver(&sched, &detector, devolve(frameworkInfo));
 
   Future<FrameworkID> frameworkId;
@@ -635,7 +619,7 @@ TEST_P(SchedulerHttpApiTest, UpdatePidToHttpSchedulerWithoutForce)
   headers["Accept"] = contentType;
 
   Future<Response> response = process::http::streaming::post(
-      master.get(),
+      master->pid,
       "api/v1/scheduler",
       headers,
       serialize(call, contentType),
@@ -673,8 +657,6 @@ TEST_P(SchedulerHttpApiTest, UpdatePidToHttpSchedulerWithoutForce)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -684,8 +666,7 @@ TEST_P(SchedulerHttpApiTest, NotAcceptable)
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master> > master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   // Retrieve the parameter passed as content type to this test.
   const string contentType = GetParam();
@@ -701,7 +682,7 @@ TEST_P(SchedulerHttpApiTest, NotAcceptable)
   subscribe->mutable_framework_info()->CopyFrom(DEFAULT_V1_FRAMEWORK_INFO);
 
   Future<Response> response = process::http::streaming::post(
-      master.get(),
+      master->pid,
       "api/v1/scheduler",
       headers,
       serialize(call, contentType),
@@ -717,8 +698,7 @@ TEST_P(SchedulerHttpApiTest, NoAcceptHeader)
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master> > master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   // Retrieve the parameter passed as content type to this test.
   const string contentType = GetParam();
@@ -735,7 +715,7 @@ TEST_P(SchedulerHttpApiTest, NoAcceptHeader)
   subscribe->mutable_framework_info()->CopyFrom(DEFAULT_V1_FRAMEWORK_INFO);
 
   Future<Response> response = process::http::streaming::post(
-      master.get(),
+      master->pid,
       "api/v1/scheduler",
       headers,
       serialize(call, contentType),
@@ -752,8 +732,7 @@ TEST_P(SchedulerHttpApiTest, DefaultAccept)
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master> > master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   process::http::Headers headers;
   headers["Accept"] = "*/*";
@@ -769,7 +748,7 @@ TEST_P(SchedulerHttpApiTest, DefaultAccept)
   const string contentType = GetParam();
 
   Future<Response> response = process::http::streaming::post(
-      master.get(),
+      master->pid,
       "api/v1/scheduler",
       headers,
       serialize(call, contentType),
@@ -785,11 +764,10 @@ TEST_F(SchedulerHttpApiTest, GetRequest)
   master::Flags flags = CreateMasterFlags();
   flags.authenticate_frameworks = false;
 
-  Try<PID<Master> > master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   Future<Response> response = process::http::get(
-      master.get(),
+      master->pid,
       "api/v1/scheduler");
 
   AWAIT_READY(response);

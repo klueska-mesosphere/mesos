@@ -20,6 +20,7 @@
 #include <process/future.hpp>
 #include <process/gtest.hpp>
 #include <process/http.hpp>
+#include <process/owned.hpp>
 #include <process/pid.hpp>
 #include <process/process.hpp>
 
@@ -30,6 +31,7 @@
 using mesos::internal::master::Master;
 
 using process::Future;
+using process::Owned;
 using process::PID;
 
 using process::http::BadRequest;
@@ -91,24 +93,23 @@ string stringify(const JsonResponse& response)
 
 TEST_F(HealthTest, ObserveEndpoint)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   // Empty get to the observe endpoint.
-  Future<Response> response = process::http::get(master.get(), "observe");
+  Future<Response> response = process::http::get(master->pid, "observe");
   VALIDATE_BAD_RESPONSE(response, "Missing value for 'monitor'");
 
   // Empty post to the observe endpoint.
-  response = process::http::post(master.get(), "observe");
+  response = process::http::post(master->pid, "observe");
   VALIDATE_BAD_RESPONSE(response, "Missing value for 'monitor'");
 
   // Query string is ignored.
-  response = process::http::post(master.get(), "observe?monitor=foo");
+  response = process::http::post(master->pid, "observe?monitor=foo");
   VALIDATE_BAD_RESPONSE(response, "Missing value for 'monitor'");
 
   // Malformed value causes error.
   response = process::http::post(
-      master.get(),
+      master->pid,
       "observe",
       None(),
       "monitor=foo%");
@@ -118,7 +119,7 @@ TEST_F(HealthTest, ObserveEndpoint)
 
   // Empty value causes error.
   response = process::http::post(
-      master.get(),
+      master->pid,
       "observe",
       None(),
       "monitor=");
@@ -126,7 +127,7 @@ TEST_F(HealthTest, ObserveEndpoint)
 
   // Missing hosts.
   response = process::http::post(
-      master.get(),
+      master->pid,
       "observe",
       None(),
       "monitor=a");
@@ -134,7 +135,7 @@ TEST_F(HealthTest, ObserveEndpoint)
 
   // Missing level.
   response = process::http::post(
-      master.get(),
+      master->pid,
       "observe",
       None(),
       "monitor=a&hosts=b");
@@ -147,7 +148,7 @@ TEST_F(HealthTest, ObserveEndpoint)
   expected.isHealthy = true;
 
   response = process::http::post(
-      master.get(),
+      master->pid,
       "observe",
       None(),
       "monitor=a&hosts=b&level=ok");
@@ -155,21 +156,21 @@ TEST_F(HealthTest, ObserveEndpoint)
 
   // ok is case-insensitive.
   response = process::http::post(
-      master.get(),
+      master->pid,
       "observe",
       None(),
       "monitor=a&hosts=b&level=Ok");
   VALIDATE_GOOD_RESPONSE(response, stringify(expected));
 
   response = process::http::post(
-      master.get(),
+      master->pid,
       "observe",
       None(),
       "monitor=a&hosts=b&level=oK");
   VALIDATE_GOOD_RESPONSE(response, stringify(expected));
 
   response = process::http::post(
-      master.get(),
+      master->pid,
       "observe",
       None(),
       "monitor=a&hosts=b&level=OK");
@@ -179,7 +180,7 @@ TEST_F(HealthTest, ObserveEndpoint)
   expected.isHealthy = false;
   response =
     process::http::post(
-      master.get(),
+      master->pid,
       "observe",
       None(),
       "monitor=a&hosts=b&level=true");
@@ -188,13 +189,11 @@ TEST_F(HealthTest, ObserveEndpoint)
   // Comma-separated hosts are parsed into an array.
   expected.hosts.push_back("e");
   response = process::http::post(
-      master.get(),
+      master->pid,
       "observe",
       None(),
       "monitor=a&hosts=b,e&level=true");
   VALIDATE_GOOD_RESPONSE(response, stringify(expected));
-
-  Shutdown();
 }
 
 } // namespace tests {

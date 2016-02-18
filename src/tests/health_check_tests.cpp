@@ -165,24 +165,28 @@ public:
 // Testing a healthy task reporting one healthy status to scheduler.
 TEST_F(HealthCheckTest, HealthyTask)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.isolation = "posix/cpu,posix/mem";
 
   Fetcher fetcher;
 
-  Try<MesosContainerizer*> containerizer =
+  Try<MesosContainerizer*> _containerizer =
     MesosContainerizer::create(flags, false, &fetcher);
-  CHECK_SOME(containerizer);
 
-  Try<PID<Slave> > slave = StartSlave(containerizer.get());
-  ASSERT_SOME(slave);
+  CHECK_SOME(_containerizer);
+  Owned<MesosContainerizer> containerizer(_containerizer.get());
+
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), containerizer.get());
+
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-    &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+    &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _))
     .Times(1);
@@ -256,7 +260,7 @@ TEST_F(HealthCheckTest, HealthyTask)
 
   // Verify that task health is exposed in the master's state endpoint.
   {
-    Future<http::Response> response = http::get(master.get(), "state");
+    Future<http::Response> response = http::get(master->pid, "state");
     AWAIT_READY(response);
 
     Try<JSON::Object> parse = JSON::parse<JSON::Object>(response.get().body);
@@ -269,7 +273,7 @@ TEST_F(HealthCheckTest, HealthyTask)
 
   // Verify that task health is exposed in the slave's state endpoint.
   {
-    Future<http::Response> response = http::get(slave.get(), "state");
+    Future<http::Response> response = http::get(slave->pid, "state");
     AWAIT_READY(response);
 
     Try<JSON::Object> parse = JSON::parse<JSON::Object>(response.get().body);
@@ -282,8 +286,6 @@ TEST_F(HealthCheckTest, HealthyTask)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -305,8 +307,7 @@ TEST_F(HealthCheckTest, ROOT_DOCKER_DockerHealthyTask)
     << "this test.\n"
     << "-------------------------------------------------------------";
 
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
 
@@ -323,12 +324,14 @@ TEST_F(HealthCheckTest, ROOT_DOCKER_DockerHealthyTask)
       Owned<ContainerLogger>(logger.get()),
       docker);
 
-  Try<PID<Slave>> slave = StartSlave(&containerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &containerizer, flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-    &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+    &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _))
     .Times(1);
@@ -387,7 +390,8 @@ TEST_F(HealthCheckTest, ROOT_DOCKER_DockerHealthyTask)
 
   AWAIT_READY(termination);
 
-  Shutdown();
+  slave->terminate();
+  slave.reset();
 
   Future<std::list<Docker::Container>> containers =
     docker->ps(true, slave::DOCKER_NAME_PREFIX);
@@ -404,24 +408,28 @@ TEST_F(HealthCheckTest, ROOT_DOCKER_DockerHealthyTask)
 // Same as above, but use the non-shell version of the health command.
 TEST_F(HealthCheckTest, HealthyTaskNonShell)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.isolation = "posix/cpu,posix/mem";
 
   Fetcher fetcher;
 
-  Try<MesosContainerizer*> containerizer =
+  Try<MesosContainerizer*> _containerizer =
     MesosContainerizer::create(flags, false, &fetcher);
-  CHECK_SOME(containerizer);
 
-  Try<PID<Slave> > slave = StartSlave(containerizer.get());
-  ASSERT_SOME(slave);
+  CHECK_SOME(_containerizer);
+  Owned<MesosContainerizer> containerizer(_containerizer.get());
+
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), containerizer.get());
+
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-    &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+    &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _))
     .Times(1);
@@ -462,32 +470,34 @@ TEST_F(HealthCheckTest, HealthyTaskNonShell)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
 // Testing health status change reporting to scheduler.
 TEST_F(HealthCheckTest, HealthStatusChange)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.isolation = "posix/cpu,posix/mem";
 
   Fetcher fetcher;
 
-  Try<MesosContainerizer*> containerizer =
+  Try<MesosContainerizer*> _containerizer =
     MesosContainerizer::create(flags, false, &fetcher);
-  CHECK_SOME(containerizer);
 
-  Try<PID<Slave> > slave = StartSlave(containerizer.get());
-  ASSERT_SOME(slave);
+  CHECK_SOME(_containerizer);
+  Owned<MesosContainerizer> containerizer(_containerizer.get());
+
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), containerizer.get());
+
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _));
 
@@ -543,7 +553,7 @@ TEST_F(HealthCheckTest, HealthStatusChange)
 
   // Verify that task health is exposed in the master's state endpoint.
   {
-    Future<http::Response> response = http::get(master.get(), "state");
+    Future<http::Response> response = http::get(master->pid, "state");
     AWAIT_READY(response);
 
     Try<JSON::Object> parse = JSON::parse<JSON::Object>(response.get().body);
@@ -556,7 +566,7 @@ TEST_F(HealthCheckTest, HealthStatusChange)
 
   // Verify that task health is exposed in the slave's state endpoint.
   {
-    Future<http::Response> response = http::get(slave.get(), "state");
+    Future<http::Response> response = http::get(slave->pid, "state");
     AWAIT_READY(response);
 
     Try<JSON::Object> parse = JSON::parse<JSON::Object>(response.get().body);
@@ -574,7 +584,7 @@ TEST_F(HealthCheckTest, HealthStatusChange)
   // Verify that the task health change is reflected in the master's
   // state endpoint.
   {
-    Future<http::Response> response = http::get(master.get(), "state");
+    Future<http::Response> response = http::get(master->pid, "state");
     AWAIT_READY(response);
 
     Try<JSON::Object> parse = JSON::parse<JSON::Object>(response.get().body);
@@ -588,7 +598,7 @@ TEST_F(HealthCheckTest, HealthStatusChange)
   // Verify that the task health change is reflected in the slave's
   // state endpoint.
   {
-    Future<http::Response> response = http::get(slave.get(), "state");
+    Future<http::Response> response = http::get(slave->pid, "state");
     AWAIT_READY(response);
 
     Try<JSON::Object> parse = JSON::parse<JSON::Object>(response.get().body);
@@ -606,7 +616,7 @@ TEST_F(HealthCheckTest, HealthStatusChange)
   // Verify through master's state endpoint that the task is back to a
   // healthy state.
   {
-    Future<http::Response> response = http::get(master.get(), "state");
+    Future<http::Response> response = http::get(master->pid, "state");
     AWAIT_READY(response);
 
     Try<JSON::Object> parse = JSON::parse<JSON::Object>(response.get().body);
@@ -620,7 +630,7 @@ TEST_F(HealthCheckTest, HealthStatusChange)
   // Verify through slave's state endpoint that the task is back to a
   // healthy state.
   {
-    Future<http::Response> response = http::get(slave.get(), "state");
+    Future<http::Response> response = http::get(slave->pid, "state");
     AWAIT_READY(response);
 
     Try<JSON::Object> parse = JSON::parse<JSON::Object>(response.get().body);
@@ -635,8 +645,6 @@ TEST_F(HealthCheckTest, HealthStatusChange)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -657,8 +665,7 @@ TEST_F(HealthCheckTest, ROOT_DOCKER_DockerHealthStatusChange)
     << "this test.\n"
     << "-------------------------------------------------------------";
 
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
 
@@ -675,12 +682,14 @@ TEST_F(HealthCheckTest, ROOT_DOCKER_DockerHealthStatusChange)
       Owned<ContainerLogger>(logger.get()),
       docker);
 
-  Try<PID<Slave>> slave = StartSlave(&containerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &containerizer, flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _));
 
@@ -770,7 +779,8 @@ TEST_F(HealthCheckTest, ROOT_DOCKER_DockerHealthStatusChange)
 
   AWAIT_READY(termination);
 
-  Shutdown();
+  slave->terminate();
+  slave.reset();
 
   Future<std::list<Docker::Container>> containers =
     docker->ps(true, slave::DOCKER_NAME_PREFIX);
@@ -787,24 +797,28 @@ TEST_F(HealthCheckTest, ROOT_DOCKER_DockerHealthStatusChange)
 // Testing killing task after number of consecutive failures.
 TEST_F(HealthCheckTest, ConsecutiveFailures)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.isolation = "posix/cpu,posix/mem";
 
   Fetcher fetcher;
 
-  Try<MesosContainerizer*> containerizer =
+  Try<MesosContainerizer*> _containerizer =
     MesosContainerizer::create(flags, false, &fetcher);
-  CHECK_SOME(containerizer);
 
-  Try<PID<Slave> > slave = StartSlave(containerizer.get());
-  ASSERT_SOME(slave);
+  CHECK_SOME(_containerizer);
+  Owned<MesosContainerizer> containerizer(_containerizer.get());
+
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), containerizer.get());
+
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-    &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+    &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _))
     .Times(1);
@@ -866,32 +880,34 @@ TEST_F(HealthCheckTest, ConsecutiveFailures)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
 // Testing command using environment variable.
 TEST_F(HealthCheckTest, EnvironmentSetup)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.isolation = "posix/cpu,posix/mem";
 
   Fetcher fetcher;
 
-  Try<MesosContainerizer*> containerizer =
+  Try<MesosContainerizer*> _containerizer =
     MesosContainerizer::create(flags, false, &fetcher);
-  CHECK_SOME(containerizer);
 
-  Try<PID<Slave> > slave = StartSlave(containerizer.get());
-  ASSERT_SOME(slave);
+  CHECK_SOME(_containerizer);
+  Owned<MesosContainerizer> containerizer(_containerizer.get());
+
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), containerizer.get());
+
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-    &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+    &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _))
     .Times(1);
@@ -930,32 +946,34 @@ TEST_F(HealthCheckTest, EnvironmentSetup)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
 // Testing grace period that ignores all failed task failures.
 TEST_F(HealthCheckTest, DISABLED_GracePeriod)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.isolation = "posix/cpu,posix/mem";
 
   Fetcher fetcher;
 
-  Try<MesosContainerizer*> containerizer =
+  Try<MesosContainerizer*> _containerizer =
     MesosContainerizer::create(flags, false, &fetcher);
-  CHECK_SOME(containerizer);
 
-  Try<PID<Slave> > slave = StartSlave(containerizer.get());
-  ASSERT_SOME(slave);
+  CHECK_SOME(_containerizer);
+  Owned<MesosContainerizer> containerizer(_containerizer.get());
+
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), containerizer.get());
+
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-    &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+    &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _))
     .Times(1);
@@ -1000,32 +1018,34 @@ TEST_F(HealthCheckTest, DISABLED_GracePeriod)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
 // Testing continue running health check when check command timeout.
 TEST_F(HealthCheckTest, CheckCommandTimeout)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.isolation = "posix/cpu,posix/mem";
 
   Fetcher fetcher;
 
-  Try<MesosContainerizer*> containerizer =
+  Try<MesosContainerizer*> _containerizer =
     MesosContainerizer::create(flags, false, &fetcher);
-  CHECK_SOME(containerizer);
 
-  Try<PID<Slave>> slave = StartSlave(containerizer.get());
-  ASSERT_SOME(slave);
+  CHECK_SOME(_containerizer);
+  Owned<MesosContainerizer> containerizer(_containerizer.get());
+
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), containerizer.get());
+
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-    &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+    &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _))
     .Times(1);
@@ -1069,8 +1089,6 @@ TEST_F(HealthCheckTest, CheckCommandTimeout)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 } // namespace tests {

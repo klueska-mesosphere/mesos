@@ -22,6 +22,7 @@
 #include <process/future.hpp>
 #include <process/gmock.hpp>
 #include <process/http.hpp>
+#include <process/owned.hpp>
 #include <process/pid.hpp>
 
 #include <stout/base64.hpp>
@@ -38,6 +39,7 @@ using mesos::internal::master::Master;
 using mesos::internal::slave::Slave;
 
 using process::Future;
+using process::Owned;
 using process::PID;
 
 using process::http::BadRequest;
@@ -62,12 +64,11 @@ class TeardownTest : public MesosTest {};
 // Testing route with authorization header and good credentials.
 TEST_F(TeardownTest, TeardownEndpoint)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -83,7 +84,7 @@ TEST_F(TeardownTest, TeardownEndpoint)
                    ":" + DEFAULT_CREDENTIAL.secret());
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "teardown",
       headers,
       "frameworkId=" + frameworkId.get().value());
@@ -93,20 +94,17 @@ TEST_F(TeardownTest, TeardownEndpoint)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
 // Testing route with bad credentials.
 TEST_F(TeardownTest, TeardownEndpointBadCredentials)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -121,7 +119,7 @@ TEST_F(TeardownTest, TeardownEndpointBadCredentials)
     base64::encode("badPrincipal:badSecret");
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "teardown",
       headers,
       "frameworkId=" + frameworkId.get().value());
@@ -131,8 +129,6 @@ TEST_F(TeardownTest, TeardownEndpointBadCredentials)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -149,12 +145,11 @@ TEST_F(TeardownTest, TeardownEndpointGoodACLs)
 
   master::Flags flags = CreateMasterFlags();
   flags.acls = acls;
-  Try<PID<Master> > master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -170,7 +165,7 @@ TEST_F(TeardownTest, TeardownEndpointGoodACLs)
                    ":" + DEFAULT_CREDENTIAL.secret());
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "teardown",
       headers,
       "frameworkId=" + frameworkId.get().value());
@@ -180,8 +175,6 @@ TEST_F(TeardownTest, TeardownEndpointGoodACLs)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -199,12 +192,11 @@ TEST_F(TeardownTest, TeardownEndpointGoodDeprecatedACLs)
 
   master::Flags flags = CreateMasterFlags();
   flags.acls = acls;
-  Try<PID<Master> > master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -220,7 +212,7 @@ TEST_F(TeardownTest, TeardownEndpointGoodDeprecatedACLs)
                    ":" + DEFAULT_CREDENTIAL.secret());
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "teardown",
       headers,
       "frameworkId=" + frameworkId.get().value());
@@ -230,8 +222,6 @@ TEST_F(TeardownTest, TeardownEndpointGoodDeprecatedACLs)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -247,12 +237,11 @@ TEST_F(TeardownTest, TeardownEndpointBadACLs)
 
   master::Flags flags = CreateMasterFlags();
   flags.acls = acls;
-  Try<PID<Master> > master = StartMaster(flags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -268,7 +257,7 @@ TEST_F(TeardownTest, TeardownEndpointBadACLs)
                    ":" + DEFAULT_CREDENTIAL.secret());
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "teardown",
       headers,
       "frameworkId=" + frameworkId.get().value());
@@ -278,20 +267,17 @@ TEST_F(TeardownTest, TeardownEndpointBadACLs)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
 // Testing route without frameworkId value.
 TEST_F(TeardownTest, TeardownEndpointNoFrameworkId)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -306,26 +292,23 @@ TEST_F(TeardownTest, TeardownEndpointNoFrameworkId)
                    ":" + DEFAULT_CREDENTIAL.secret());
 
   Future<Response> response =
-    process::http::post(master.get(), "teardown", headers, "");
+    process::http::post(master->pid, "teardown", headers, "");
   AWAIT_READY(response);
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(BadRequest().status, response);
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
 // Testing route without authorization header.
 TEST_F(TeardownTest, TeardownEndpointNoHeader)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -336,7 +319,7 @@ TEST_F(TeardownTest, TeardownEndpointNoHeader)
   AWAIT_READY(frameworkId);
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "teardown",
       None(),
       "frameworkId=" + frameworkId.get().value());
@@ -346,8 +329,6 @@ TEST_F(TeardownTest, TeardownEndpointNoHeader)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 } // namespace tests {

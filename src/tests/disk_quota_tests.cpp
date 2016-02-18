@@ -23,6 +23,7 @@
 #include <mesos/resources.hpp>
 
 #include <process/gtest.hpp>
+#include <process/owned.hpp>
 #include <process/pid.hpp>
 
 #include <stout/fs.hpp>
@@ -175,8 +176,7 @@ class DiskQuotaTest : public MesosTest {};
 // usage exceeds its quota.
 TEST_F(DiskQuotaTest, DiskUsageExceedsQuota)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.isolation = "posix/cpu,posix/mem,posix/disk";
@@ -186,12 +186,12 @@ TEST_F(DiskQuotaTest, DiskUsageExceedsQuota)
   flags.container_disk_watch_interval = Milliseconds(1);
   flags.enforce_container_disk_quota = true;
 
-  Try<PID<Slave>> slave = StartSlave(flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _));
 
@@ -232,8 +232,6 @@ TEST_F(DiskQuotaTest, DiskUsageExceedsQuota)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -246,8 +244,7 @@ TEST_F(DiskQuotaTest, VolumeUsageExceedsQuota)
 
   master::Flags masterFlags = CreateMasterFlags();
 
-  Try<PID<Master>> master = StartMaster(masterFlags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(masterFlags);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
   slaveFlags.isolation = "posix/cpu,posix/mem,posix/disk";
@@ -258,12 +255,12 @@ TEST_F(DiskQuotaTest, VolumeUsageExceedsQuota)
   slaveFlags.enforce_container_disk_quota = true;
   slaveFlags.resources = "cpus:2;mem:128;disk(role1):128";
 
-  Try<PID<Slave>> slave = StartSlave(slaveFlags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), slaveFlags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+      &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -324,8 +321,6 @@ TEST_F(DiskQuotaTest, VolumeUsageExceedsQuota)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -334,8 +329,7 @@ TEST_F(DiskQuotaTest, VolumeUsageExceedsQuota)
 // its quota).
 TEST_F(DiskQuotaTest, NoQuotaEnforcement)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.isolation = "posix/cpu,posix/mem,posix/disk";
@@ -347,18 +341,22 @@ TEST_F(DiskQuotaTest, NoQuotaEnforcement)
 
   Fetcher fetcher;
 
-  Try<MesosContainerizer*> containerizer =
+  Try<MesosContainerizer*> _containerizer =
     MesosContainerizer::create(flags, true, &fetcher);
 
-  ASSERT_SOME(containerizer);
+  ASSERT_SOME(_containerizer);
+  Owned<MesosContainerizer> containerizer(_containerizer.get());
 
-  Try<PID<Slave>> slave = StartSlave(containerizer.get(), flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), containerizer.get(), flags);
+
 
   MockScheduler sched;
 
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(_, _, _));
 
@@ -391,7 +389,7 @@ TEST_F(DiskQuotaTest, NoQuotaEnforcement)
   EXPECT_EQ(task.task_id(), status.get().task_id());
   EXPECT_EQ(TASK_RUNNING, status.get().state());
 
-  Future<hashset<ContainerID>> containers = containerizer.get()->containers();
+  Future<hashset<ContainerID>> containers = containerizer->containers();
   AWAIT_READY(containers);
   ASSERT_EQ(1u, containers.get().size());
 
@@ -403,7 +401,7 @@ TEST_F(DiskQuotaTest, NoQuotaEnforcement)
   // return a failed future, leading to a failed test.
   Duration elapsed = Duration::zero();
   while (true) {
-    Future<ResourceStatistics> usage = containerizer.get()->usage(containerId);
+    Future<ResourceStatistics> usage = containerizer->usage(containerId);
     AWAIT_READY(usage);
 
     ASSERT_TRUE(usage.get().has_disk_limit_bytes());
@@ -422,17 +420,12 @@ TEST_F(DiskQuotaTest, NoQuotaEnforcement)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
-
-  delete containerizer.get();
 }
 
 
 TEST_F(DiskQuotaTest, ResourceStatistics)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.isolation = "posix/cpu,posix/mem,posix/disk";
@@ -443,18 +436,22 @@ TEST_F(DiskQuotaTest, ResourceStatistics)
 
   Fetcher fetcher;
 
-  Try<MesosContainerizer*> containerizer =
+  Try<MesosContainerizer*> _containerizer =
     MesosContainerizer::create(flags, true, &fetcher);
 
-  ASSERT_SOME(containerizer);
+  ASSERT_SOME(_containerizer);
+  Owned<MesosContainerizer> containerizer(_containerizer.get());
 
-  Try<PID<Slave>> slave = StartSlave(containerizer.get(), flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), containerizer.get(), flags);
+
 
   MockScheduler sched;
 
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(_, _, _));
 
@@ -487,7 +484,7 @@ TEST_F(DiskQuotaTest, ResourceStatistics)
   EXPECT_EQ(task.task_id(), status.get().task_id());
   EXPECT_EQ(TASK_RUNNING, status.get().state());
 
-  Future<hashset<ContainerID>> containers = containerizer.get()->containers();
+  Future<hashset<ContainerID>> containers = containerizer->containers();
   AWAIT_READY(containers);
   ASSERT_EQ(1u, containers.get().size());
 
@@ -496,7 +493,7 @@ TEST_F(DiskQuotaTest, ResourceStatistics)
   // Wait until disk usage can be retrieved.
   Duration elapsed = Duration::zero();
   while (true) {
-    Future<ResourceStatistics> usage = containerizer.get()->usage(containerId);
+    Future<ResourceStatistics> usage = containerizer->usage(containerId);
     AWAIT_READY(usage);
 
     ASSERT_TRUE(usage.get().has_disk_limit_bytes());
@@ -515,10 +512,6 @@ TEST_F(DiskQuotaTest, ResourceStatistics)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
-
-  delete containerizer.get();
 }
 
 
@@ -526,8 +519,7 @@ TEST_F(DiskQuotaTest, ResourceStatistics)
 // the slave restarts.
 TEST_F(DiskQuotaTest, SlaveRecovery)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.isolation = "posix/cpu,posix/mem,posix/disk";
@@ -535,13 +527,17 @@ TEST_F(DiskQuotaTest, SlaveRecovery)
 
   Fetcher fetcher;
 
-  Try<MesosContainerizer*> containerizer =
+  Try<MesosContainerizer*> _containerizer =
     MesosContainerizer::create(flags, true, &fetcher);
 
-  ASSERT_SOME(containerizer);
+  ASSERT_SOME(_containerizer);
+  Owned<MesosContainerizer> containerizer(_containerizer.get());
 
-  Try<PID<Slave>> slave = StartSlave(containerizer.get(), flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), containerizer.get(), flags);
+
 
   MockScheduler sched;
 
@@ -550,7 +546,7 @@ TEST_F(DiskQuotaTest, SlaveRecovery)
   frameworkInfo.set_checkpoint(true);
 
   MesosSchedulerDriver driver(
-      &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+      &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(_, _, _));
 
@@ -583,26 +579,26 @@ TEST_F(DiskQuotaTest, SlaveRecovery)
   EXPECT_EQ(task.task_id(), status.get().task_id());
   EXPECT_EQ(TASK_RUNNING, status.get().state());
 
-  Future<hashset<ContainerID>> containers = containerizer.get()->containers();
+  Future<hashset<ContainerID>> containers = containerizer->containers();
   AWAIT_READY(containers);
   ASSERT_EQ(1u, containers.get().size());
 
   ContainerID containerId = *(containers.get().begin());
 
   // Stop the slave.
-  Stop(slave.get());
-  delete containerizer.get();
+  slave->terminate();
 
   Future<ReregisterExecutorMessage> reregisterExecutorMessage =
     FUTURE_PROTOBUF(ReregisterExecutorMessage(), _, _);
 
   Future<Nothing> _recover = FUTURE_DISPATCH(_, &Slave::_recover);
 
-  containerizer = MesosContainerizer::create(flags, true, &fetcher);
-  ASSERT_SOME(containerizer);
+  _containerizer = MesosContainerizer::create(flags, true, &fetcher);
+  ASSERT_SOME(_containerizer);
+  containerizer.reset(_containerizer.get());
 
-  slave = StartSlave(containerizer.get(), flags);
-  ASSERT_SOME(slave);
+  detector = master->detector();
+  slave = StartSlave(detector.get(), containerizer.get(), flags);
 
   Clock::pause();
 
@@ -624,7 +620,7 @@ TEST_F(DiskQuotaTest, SlaveRecovery)
   // Wait until disk usage can be retrieved.
   Duration elapsed = Duration::zero();
   while (true) {
-    Future<ResourceStatistics> usage = containerizer.get()->usage(containerId);
+    Future<ResourceStatistics> usage = containerizer->usage(containerId);
     AWAIT_READY(usage);
 
     ASSERT_TRUE(usage.get().has_disk_limit_bytes());
@@ -647,10 +643,6 @@ TEST_F(DiskQuotaTest, SlaveRecovery)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
-
-  delete containerizer.get();
 }
 
 } // namespace tests {

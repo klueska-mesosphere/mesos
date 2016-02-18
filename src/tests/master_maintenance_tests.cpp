@@ -70,6 +70,7 @@ using mesos::v1::scheduler::Mesos;
 
 using process::Clock;
 using process::Future;
+using process::Owned;
 using process::PID;
 using process::Queue;
 using process::Time;
@@ -187,8 +188,7 @@ ACTION_P(Enqueue, queue)
 TEST_F(MasterMaintenanceTest, UpdateSchedule)
 {
   // Set up a master.
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   // Extra machine used in this test.
   // It isn't filled in, so it's incorrect.
@@ -199,7 +199,7 @@ TEST_F(MasterMaintenanceTest, UpdateSchedule)
       {createWindow({machine1}, unavailability)});
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -208,7 +208,7 @@ TEST_F(MasterMaintenanceTest, UpdateSchedule)
 
   // Get the maintenance schedule.
   response = process::http::get(
-      master.get(),
+      master->pid,
       "maintenance/schedule");
 
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
@@ -233,7 +233,7 @@ TEST_F(MasterMaintenanceTest, UpdateSchedule)
       {createWindow({}, unavailability)});
 
   response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -247,7 +247,7 @@ TEST_F(MasterMaintenanceTest, UpdateSchedule)
           createUnavailability(Time::create(-10).get()))});
 
   response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -261,7 +261,7 @@ TEST_F(MasterMaintenanceTest, UpdateSchedule)
           createUnavailability(Clock::now(), Seconds(-10)))});
 
   response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -274,7 +274,7 @@ TEST_F(MasterMaintenanceTest, UpdateSchedule)
       createWindow({machine1}, unavailability)});
 
   response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -286,7 +286,7 @@ TEST_F(MasterMaintenanceTest, UpdateSchedule)
       {createWindow({badMachine}, unavailability)});
 
   response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -298,7 +298,7 @@ TEST_F(MasterMaintenanceTest, UpdateSchedule)
       {createWindow({machine1, machine2}, unavailability)});
 
   response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -308,7 +308,7 @@ TEST_F(MasterMaintenanceTest, UpdateSchedule)
   // Delete the schedule (via an empty schedule).
   schedule = createSchedule({});
   response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -321,15 +321,14 @@ TEST_F(MasterMaintenanceTest, UpdateSchedule)
 TEST_F(MasterMaintenanceTest, FailToUnscheduleDeactivatedMachines)
 {
   // Set up a master.
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   // Schedule two machines.
   maintenance::Schedule schedule = createSchedule(
       {createWindow({machine1, machine2}, unavailability)});
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -339,7 +338,7 @@ TEST_F(MasterMaintenanceTest, FailToUnscheduleDeactivatedMachines)
   // Deactivate machine1.
   JSON::Array machines = createMachineList({machine1});
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/down",
       headers,
       stringify(machines));
@@ -350,7 +349,7 @@ TEST_F(MasterMaintenanceTest, FailToUnscheduleDeactivatedMachines)
   schedule = createSchedule({createWindow({machine2}, unavailability)});
 
   response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -360,7 +359,7 @@ TEST_F(MasterMaintenanceTest, FailToUnscheduleDeactivatedMachines)
   // Reactivate machine1.
   machines = createMachineList({machine1});
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/up",
       headers,
       stringify(machines));
@@ -496,17 +495,17 @@ TEST_F(MasterMaintenanceTest, PendingUnavailabilityTest)
 // they aren't passed up to the top level API yet.
 TEST_F(MasterMaintenanceTest, PreV1SchedulerSupport)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
+  TestContainerizer containerizer(&exec);
 
-  Try<PID<Slave>> slave = StartSlave(&exec);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), &containerizer);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _))
     .Times(1);
@@ -539,7 +538,7 @@ TEST_F(MasterMaintenanceTest, PreV1SchedulerSupport)
   // Schedule this slave for maintenance.
   MachineID machine;
   machine.set_hostname(maintenanceHostname);
-  machine.set_ip(stringify(slave.get().address.ip));
+  machine.set_ip(stringify(slave->pid.address.ip));
 
   const Time start = Clock::now() + Seconds(60);
   const Duration duration = Seconds(120);
@@ -555,7 +554,7 @@ TEST_F(MasterMaintenanceTest, PreV1SchedulerSupport)
   // from the scheduled slave.
   Future<Response> response =
     process::http::post(
-        master.get(),
+        master->pid,
         "maintenance/schedule",
         headers,
         stringify(JSON::protobuf(schedule)));
@@ -575,8 +574,6 @@ TEST_F(MasterMaintenanceTest, PreV1SchedulerSupport)
 
   driver.stop();
   driver.join();
-
-  Shutdown(); // Must shutdown before 'containerizer' gets deallocated.
 }
 
 
@@ -584,17 +581,17 @@ TEST_F(MasterMaintenanceTest, PreV1SchedulerSupport)
 // maintenance is started, and frameworks receive a task lost message.
 TEST_F(MasterMaintenanceTest, EnterMaintenanceMode)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
+  TestContainerizer containerizer(&exec);
 
-  Try<PID<Slave>> slave = StartSlave(&exec);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), &containerizer);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _))
     .Times(1);
@@ -632,7 +629,7 @@ TEST_F(MasterMaintenanceTest, EnterMaintenanceMode)
   // Schedule this slave for maintenance.
   MachineID machine;
   machine.set_hostname(maintenanceHostname);
-  machine.set_ip(stringify(slave.get().address.ip));
+  machine.set_ip(stringify(slave->pid.address.ip));
 
   const Time start = Clock::now() + Seconds(60);
   const Duration duration = Seconds(120);
@@ -648,7 +645,7 @@ TEST_F(MasterMaintenanceTest, EnterMaintenanceMode)
   // from the scheduled slave.
   Future<Response> response =
     process::http::post(
-        master.get(),
+        master->pid,
         "maintenance/schedule",
         headers,
         stringify(JSON::protobuf(schedule)));
@@ -658,7 +655,7 @@ TEST_F(MasterMaintenanceTest, EnterMaintenanceMode)
   // Verify that the master forces the slave to be shut down after the
   // maintenance is started.
   Future<ShutdownMessage> shutdownMessage =
-    FUTURE_PROTOBUF(ShutdownMessage(), master.get(), slave.get());
+    FUTURE_PROTOBUF(ShutdownMessage(), master->pid, slave->pid);
 
   // Verify that the framework will be informed that the slave is lost.
   Future<Nothing> slaveLost;
@@ -668,7 +665,7 @@ TEST_F(MasterMaintenanceTest, EnterMaintenanceMode)
   // Start the maintenance.
   response =
     process::http::post(
-        master.get(),
+        master->pid,
         "machine/down",
         headers,
         stringify(createMachineList({machine})));
@@ -687,26 +684,25 @@ TEST_F(MasterMaintenanceTest, EnterMaintenanceMode)
 
   // Wait on the agent to terminate so that it wipes out it's latest symlink.
   // This way when we launch a new agent it will register with a new agent id.
-  wait(slave.get());
+  wait(slave->pid);
 
   // Ensure that the slave gets shut down immediately if it tries to register
   // from a machine that is under maintenance.
-  shutdownMessage = FUTURE_PROTOBUF(ShutdownMessage(), master.get(), _);
+  shutdownMessage = FUTURE_PROTOBUF(ShutdownMessage(), master->pid, _);
   EXPECT_TRUE(shutdownMessage.isPending());
 
-  slave = StartSlave();
-  ASSERT_SOME(slave);
+  slave = StartSlave(detector.get());
 
   AWAIT_READY(shutdownMessage);
 
   // Wait on the agent to terminate so that it wipes out it's latest symlink.
   // This way when we launch a new agent it will register with a new agent id.
-  wait(slave.get());
+  wait(slave->pid);
 
   // Stop maintenance.
   response =
     process::http::post(
-        master.get(),
+        master->pid,
         "machine/up",
         headers,
         stringify(createMachineList({machine})));
@@ -718,15 +714,13 @@ TEST_F(MasterMaintenanceTest, EnterMaintenanceMode)
     FUTURE_PROTOBUF(SlaveRegisteredMessage(), _, _);
 
   // Start the agent again.
-  slave = StartSlave();
+  slave = StartSlave(detector.get());
 
   // Wait for agent registration.
   AWAIT_READY(slaveRegisteredMessage);
 
   driver.stop();
   driver.join();
-
-  Shutdown(); // Must shutdown before 'containerizer' gets deallocated.
 }
 
 
@@ -734,8 +728,7 @@ TEST_F(MasterMaintenanceTest, EnterMaintenanceMode)
 TEST_F(MasterMaintenanceTest, BringDownMachines)
 {
   // Set up a master.
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   // Extra machine used in this test.
   // It isn't filled in, so it's incorrect.
@@ -744,7 +737,7 @@ TEST_F(MasterMaintenanceTest, BringDownMachines)
   // Try to start maintenance on an unscheduled machine.
   JSON::Array machines = createMachineList({machine1, machine2});
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/down",
       headers,
       stringify(machines));
@@ -754,7 +747,7 @@ TEST_F(MasterMaintenanceTest, BringDownMachines)
   // Try an empty list.
   machines = createMachineList({});
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/down",
       headers,
       stringify(machines));
@@ -764,7 +757,7 @@ TEST_F(MasterMaintenanceTest, BringDownMachines)
   // Try an empty machine.
   machines = createMachineList({badMachine});
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/down",
       headers,
       stringify(machines));
@@ -776,7 +769,7 @@ TEST_F(MasterMaintenanceTest, BringDownMachines)
       {createWindow({machine1, machine2}, unavailability)});
 
   response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -786,7 +779,7 @@ TEST_F(MasterMaintenanceTest, BringDownMachines)
   // Down machine1.
   machines = createMachineList({machine1});
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/down",
       headers,
       stringify(machines));
@@ -795,7 +788,7 @@ TEST_F(MasterMaintenanceTest, BringDownMachines)
 
   // Fail to down machine1 again.
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/down",
       headers,
       stringify(machines));
@@ -805,7 +798,7 @@ TEST_F(MasterMaintenanceTest, BringDownMachines)
   // Fail to down machine1 and machine2.
   machines = createMachineList({machine1, machine2});
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/down",
       headers,
       stringify(machines));
@@ -815,7 +808,7 @@ TEST_F(MasterMaintenanceTest, BringDownMachines)
   // Down machine2.
   machines = createMachineList({machine2});
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/down",
       headers,
       stringify(machines));
@@ -828,13 +821,12 @@ TEST_F(MasterMaintenanceTest, BringDownMachines)
 TEST_F(MasterMaintenanceTest, BringUpMachines)
 {
   // Set up a master.
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   // Try to bring up an unscheduled machine.
   JSON::Array machines = createMachineList({machine1, machine2});
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/up",
       headers,
       stringify(machines));
@@ -847,7 +839,7 @@ TEST_F(MasterMaintenanceTest, BringUpMachines)
       createWindow({machine3}, unavailability)});
 
   response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -857,7 +849,7 @@ TEST_F(MasterMaintenanceTest, BringUpMachines)
   // Try to bring up a non-down machine.
   machines = createMachineList({machine1, machine2});
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/up",
       headers,
       stringify(machines));
@@ -867,7 +859,7 @@ TEST_F(MasterMaintenanceTest, BringUpMachines)
   // Down machine3.
   machines = createMachineList({machine3});
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/down",
       headers,
       stringify(machines));
@@ -876,7 +868,7 @@ TEST_F(MasterMaintenanceTest, BringUpMachines)
 
   // Up machine3.
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/up",
       headers,
       stringify(machines));
@@ -885,7 +877,7 @@ TEST_F(MasterMaintenanceTest, BringUpMachines)
 
   // Get the maintenance schedule.
   response = process::http::get(
-      master.get(),
+      master->pid,
       "maintenance/schedule");
 
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
@@ -905,7 +897,7 @@ TEST_F(MasterMaintenanceTest, BringUpMachines)
   // Down the other machines.
   machines = createMachineList({machine1, machine2});
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/down",
       headers,
       stringify(machines));
@@ -914,7 +906,7 @@ TEST_F(MasterMaintenanceTest, BringUpMachines)
 
   // Up the other machines.
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/up",
       headers,
       stringify(machines));
@@ -923,7 +915,7 @@ TEST_F(MasterMaintenanceTest, BringUpMachines)
 
   // Get the maintenance schedule again.
   response = process::http::get(
-      master.get(),
+      master->pid,
       "maintenance/schedule");
 
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
@@ -944,15 +936,14 @@ TEST_F(MasterMaintenanceTest, BringUpMachines)
 TEST_F(MasterMaintenanceTest, MachineStatus)
 {
   // Set up a master.
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   // Try to stop maintenance on an unscheduled machine.
   maintenance::Schedule schedule = createSchedule(
       {createWindow({machine1, machine2}, unavailability)});
 
   Future<Response> response = process::http::post(
-      master.get(),
+      master->pid,
       "maintenance/schedule",
       headers,
       stringify(JSON::protobuf(schedule)));
@@ -960,7 +951,7 @@ TEST_F(MasterMaintenanceTest, MachineStatus)
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
 
   // Get the maintenance statuses.
-  response = process::http::get(master.get(), "maintenance/status");
+  response = process::http::get(master->pid, "maintenance/status");
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
 
   // Check that both machines are draining.
@@ -978,7 +969,7 @@ TEST_F(MasterMaintenanceTest, MachineStatus)
   // Deactivate machine1.
   JSON::Array machines = createMachineList({machine1});
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/down",
       headers,
       stringify(machines));
@@ -986,7 +977,7 @@ TEST_F(MasterMaintenanceTest, MachineStatus)
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
 
   // Get the maintenance statuses.
-  response = process::http::get(master.get(), "maintenance/status");
+  response = process::http::get(master->pid, "maintenance/status");
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
 
   // Check one machine is deactivated.
@@ -1003,7 +994,7 @@ TEST_F(MasterMaintenanceTest, MachineStatus)
   // Reactivate machine1.
   machines = createMachineList({machine1});
   response = process::http::post(
-      master.get(),
+      master->pid,
       "machine/up",
       headers,
       stringify(machines));
@@ -1011,7 +1002,7 @@ TEST_F(MasterMaintenanceTest, MachineStatus)
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
 
   // Get the maintenance statuses.
-  response = process::http::get(master.get(), "maintenance/status");
+  response = process::http::get(master->pid, "maintenance/status");
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
 
   // Check that only one machine remains.

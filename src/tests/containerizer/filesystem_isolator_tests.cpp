@@ -294,8 +294,7 @@ TEST_F(LinuxFilesystemIsolatorTest, ROOT_ChangeRootFilesystem)
 // Also runs the command executor with the new root filesystem.
 TEST_F(LinuxFilesystemIsolatorTest, ROOT_ChangeRootFilesystemCommandExecutor)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.image_provisioner_backend = "copy";
@@ -309,12 +308,14 @@ TEST_F(LinuxFilesystemIsolatorTest, ROOT_ChangeRootFilesystemCommandExecutor)
 
   ASSERT_SOME(containerizer);
 
-  Try<PID<Slave>> slave = StartSlave(containerizer.get().get(), flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), containerizer.get().get(), flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-    &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+    &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -365,8 +366,6 @@ TEST_F(LinuxFilesystemIsolatorTest, ROOT_ChangeRootFilesystemCommandExecutor)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -376,8 +375,7 @@ TEST_F(LinuxFilesystemIsolatorTest, ROOT_ChangeRootFilesystemCommandExecutor)
 TEST_F(LinuxFilesystemIsolatorTest,
        ROOT_ChangeRootFilesystemCommandExecutorWithVolumes)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.image_provisioner_backend = "copy";
@@ -391,12 +389,14 @@ TEST_F(LinuxFilesystemIsolatorTest,
 
   ASSERT_SOME(containerizer);
 
-  Try<PID<Slave>> slave = StartSlave(containerizer.get().get(), flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), containerizer.get().get(), flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-    &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+    &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -466,8 +466,6 @@ TEST_F(LinuxFilesystemIsolatorTest,
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -476,8 +474,7 @@ TEST_F(LinuxFilesystemIsolatorTest,
 TEST_F(LinuxFilesystemIsolatorTest,
        ROOT_ChangeRootFilesystemCommandExecutorPersistentVolume)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.image_provisioner_backend = "copy";
@@ -496,15 +493,17 @@ TEST_F(LinuxFilesystemIsolatorTest,
 
   ASSERT_SOME(containerizer);
 
-  Try<PID<Slave>> slave = StartSlave(containerizer.get().get(), flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), containerizer.get().get(), flags);
 
   MockScheduler sched;
   FrameworkInfo frameworkInfo = DEFAULT_FRAMEWORK_INFO;
   frameworkInfo.set_role("role1");
 
   MesosSchedulerDriver driver(
-    &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+    &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -597,8 +596,6 @@ TEST_F(LinuxFilesystemIsolatorTest,
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -1312,8 +1309,7 @@ TEST_F(LinuxFilesystemIsolatorTest, ROOT_VolumeUsageExceedsSandboxQuota)
   FrameworkInfo frameworkInfo = DEFAULT_FRAMEWORK_INFO;
   frameworkInfo.set_role("role1");
 
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.isolation = "posix/disk,filesystem/linux";
@@ -1324,12 +1320,13 @@ TEST_F(LinuxFilesystemIsolatorTest, ROOT_VolumeUsageExceedsSandboxQuota)
   flags.enforce_container_disk_quota = true;
   flags.resources = "cpus:2;mem:128;disk(role1):128";
 
-  Try<PID<Slave>> slave = StartSlave(flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+      &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -1387,8 +1384,6 @@ TEST_F(LinuxFilesystemIsolatorTest, ROOT_VolumeUsageExceedsSandboxQuota)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 #endif // __linux__

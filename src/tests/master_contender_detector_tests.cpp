@@ -83,8 +83,7 @@ class MasterContenderDetectorTest : public MesosTest {};
 
 TEST_F(MasterContenderDetectorTest, File)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   // Write "master" to a file and use the "file://" mechanism to
   // create a master detector for the slave. Still requires a master
@@ -92,19 +91,19 @@ TEST_F(MasterContenderDetectorTest, File)
   slave::Flags flags = CreateSlaveFlags();
 
   const string& path = path::join(flags.work_dir, "master");
-  ASSERT_SOME(os::write(path, stringify(master.get())));
+  ASSERT_SOME(os::write(path, stringify(master->pid)));
 
-  Try<MasterDetector*> detector =
+  Try<MasterDetector*> _detector =
     MasterDetector::create("file://" + path);
 
-  ASSERT_SOME(detector);
+  ASSERT_SOME(_detector);
+  Owned<MasterDetector> detector(_detector.get());
 
-  Try<PID<Slave> > slave = StartSlave(detector.get(), flags);
-  ASSERT_SOME(slave);
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-    &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+    &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _))
     .Times(1);
@@ -119,10 +118,6 @@ TEST_F(MasterContenderDetectorTest, File)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
-
-  delete detector.get();
 }
 
 
@@ -132,7 +127,7 @@ TEST(BasicMasterContenderDetectorTest, Contender)
   master.address.ip = net::IP(10000000);
   master.address.port = 10000;
 
-  MasterContender* contender = new StandaloneMasterContender();
+  Owned<MasterContender> contender(new StandaloneMasterContender());
 
   contender->initialize(internal::protobuf::createMasterInfo(master));
 
@@ -144,7 +139,7 @@ TEST(BasicMasterContenderDetectorTest, Contender)
   // The candidacy is never lost.
   EXPECT_TRUE(lostCandidacy.isPending());
 
-  delete contender;
+  contender.reset();
 
   // Deleting the contender also withdraws the previous candidacy.
   AWAIT_READY(lostCandidacy);
@@ -332,8 +327,8 @@ TEST_F(ZooKeeperMasterContenderDetectorTest, MasterContenders)
 
   ASSERT_SOME(url);
 
-  ZooKeeperMasterContender* contender1 =
-    new ZooKeeperMasterContender(url.get());
+  Owned<ZooKeeperMasterContender> contender1(
+      new ZooKeeperMasterContender(url.get()));
 
   PID<Master> pid1;
   pid1.address.ip = net::IP(10000000);
@@ -373,7 +368,7 @@ TEST_F(ZooKeeperMasterContenderDetectorTest, MasterContenders)
   LOG(INFO) << "Killing the leading master";
 
   // Destroying detector1 (below) causes leadership change.
-  delete contender1;
+  contender1.reset();
 
   Future<Option<MasterInfo> > leader3 = detector2.detect(master1);
   AWAIT_READY(leader3);

@@ -25,6 +25,7 @@
 #include <process/clock.hpp>
 #include <process/gmock.hpp>
 #include <process/gtest.hpp>
+#include <process/owned.hpp>
 
 #include <stout/foreach.hpp>
 #include <stout/format.hpp>
@@ -172,18 +173,17 @@ TEST_P(PersistentVolumeTest, SendingCheckpointResourcesMessage)
   masterFlags.allocation_interval = Milliseconds(50);
   masterFlags.roles = frameworkInfo.role();
 
-  Try<PID<Master>> master = StartMaster(masterFlags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(masterFlags);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
   slaveFlags.resources = getSlaveResources();
 
-  Try<PID<Slave>> slave = StartSlave(slaveFlags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), slaveFlags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+      &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _));
 
@@ -270,8 +270,6 @@ TEST_P(PersistentVolumeTest, SendingCheckpointResourcesMessage)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -283,18 +281,17 @@ TEST_P(PersistentVolumeTest, ResourcesCheckpointing)
   FrameworkInfo frameworkInfo = DEFAULT_FRAMEWORK_INFO;
   frameworkInfo.set_role("role1");
 
-  Try<PID<Master>> master = StartMaster(MasterFlags({frameworkInfo}));
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(MasterFlags({frameworkInfo}));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
   slaveFlags.resources = getSlaveResources();
 
-  Try<PID<Slave>> slave = StartSlave(slaveFlags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), slaveFlags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+      &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _));
 
@@ -311,7 +308,7 @@ TEST_P(PersistentVolumeTest, ResourcesCheckpointing)
   Offer offer = offers.get()[0];
 
   Future<CheckpointResourcesMessage> checkpointResources =
-    FUTURE_PROTOBUF(CheckpointResourcesMessage(), _, slave.get());
+    FUTURE_PROTOBUF(CheckpointResourcesMessage(), _, slave->pid);
 
   Resource volume = createPersistentVolume(
       getDiskResource(Megabytes(64)),
@@ -326,21 +323,18 @@ TEST_P(PersistentVolumeTest, ResourcesCheckpointing)
   AWAIT_READY(checkpointResources);
 
   // Restart the slave.
-  Stop(slave.get());
+  slave->terminate();
 
   Future<ReregisterSlaveMessage> reregisterSlave =
     FUTURE_PROTOBUF(ReregisterSlaveMessage(), _, _);
 
-  slave = StartSlave(slaveFlags);
-  ASSERT_SOME(slave);
+  slave = StartSlave(detector.get(), slaveFlags);
 
   AWAIT_READY(reregisterSlave);
   EXPECT_EQ(Resources(reregisterSlave.get().checkpointed_resources()), volume);
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -349,18 +343,17 @@ TEST_P(PersistentVolumeTest, PreparePersistentVolume)
   FrameworkInfo frameworkInfo = DEFAULT_FRAMEWORK_INFO;
   frameworkInfo.set_role("role1");
 
-  Try<PID<Master>> master = StartMaster(MasterFlags({frameworkInfo}));
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(MasterFlags({frameworkInfo}));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
   slaveFlags.resources = getSlaveResources();
 
-  Try<PID<Slave>> slave = StartSlave(slaveFlags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), slaveFlags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+      &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _));
 
@@ -383,7 +376,7 @@ TEST_P(PersistentVolumeTest, PreparePersistentVolume)
       None());
 
   Future<CheckpointResourcesMessage> checkpointResources =
-    FUTURE_PROTOBUF(CheckpointResourcesMessage(), _, slave.get());
+    FUTURE_PROTOBUF(CheckpointResourcesMessage(), _, slave->pid);
 
   driver.acceptOffers(
       {offer.id()},
@@ -402,8 +395,6 @@ TEST_P(PersistentVolumeTest, PreparePersistentVolume)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -417,16 +408,14 @@ TEST_P(PersistentVolumeTest, MasterFailover)
 
   master::Flags masterFlags = MasterFlags({frameworkInfo});
 
-  Try<PID<Master>> master = StartMaster(masterFlags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(masterFlags);
 
-  StandaloneMasterDetector detector(master.get());
+  StandaloneMasterDetector detector(master->pid);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
   slaveFlags.resources = getSlaveResources();
 
-  Try<PID<Slave>> slave = StartSlave(&detector, slaveFlags);
-  ASSERT_SOME(slave);
+  Owned<cluster::Slave> slave = StartSlave(&detector, slaveFlags);
 
   MockScheduler sched;
   TestingMesosSchedulerDriver driver(&sched, &detector, frameworkInfo);
@@ -452,7 +441,7 @@ TEST_P(PersistentVolumeTest, MasterFailover)
       None());
 
   Future<CheckpointResourcesMessage> checkpointResources =
-    FUTURE_PROTOBUF(CheckpointResourcesMessage(), _, slave.get());
+    FUTURE_PROTOBUF(CheckpointResourcesMessage(), _, slave->pid);
 
   driver.acceptOffers(
       {offer1.id()},
@@ -466,7 +455,7 @@ TEST_P(PersistentVolumeTest, MasterFailover)
   Clock::resume();
 
   // Simulate failed over master by restarting the master.
-  Stop(master.get());
+  master.reset();
 
   EXPECT_CALL(sched, disconnected(&driver));
 
@@ -481,11 +470,10 @@ TEST_P(PersistentVolumeTest, MasterFailover)
     .WillRepeatedly(Return());        // Ignore subsequent offers.
 
   master = StartMaster(masterFlags);
-  ASSERT_SOME(master);
 
   // Simulate a new master detected event on the slave so that the
   // slave will do a re-registration.
-  detector.appoint(master.get());
+  detector.appoint(master->pid);
 
   AWAIT_READY(slaveReregistered);
 
@@ -498,8 +486,6 @@ TEST_P(PersistentVolumeTest, MasterFailover)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -511,22 +497,21 @@ TEST_P(PersistentVolumeTest, IncompatibleCheckpointedResources)
   FrameworkInfo frameworkInfo = DEFAULT_FRAMEWORK_INFO;
   frameworkInfo.set_role("role1");
 
-  Try<PID<Master>> master = StartMaster(MasterFlags({frameworkInfo}));
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(MasterFlags({frameworkInfo}));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
   slaveFlags.resources = getSlaveResources();
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
   TestContainerizer containerizer(&exec);
-  StandaloneMasterDetector detector(master.get());
+  StandaloneMasterDetector detector(master->pid);
 
   MockSlave slave1(slaveFlags, &detector, &containerizer);
   spawn(slave1);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+      &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _));
 
@@ -585,8 +570,6 @@ TEST_P(PersistentVolumeTest, IncompatibleCheckpointedResources)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -598,19 +581,18 @@ TEST_P(PersistentVolumeTest, AccessPersistentVolume)
   FrameworkInfo frameworkInfo = DEFAULT_FRAMEWORK_INFO;
   frameworkInfo.set_role("role1");
 
-  Try<PID<Master>> master = StartMaster(MasterFlags({frameworkInfo}));
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(MasterFlags({frameworkInfo}));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
 
   slaveFlags.resources = getSlaveResources();
 
-  Try<PID<Slave>> slave = StartSlave(slaveFlags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), slaveFlags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+      &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -689,8 +671,6 @@ TEST_P(PersistentVolumeTest, AccessPersistentVolume)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -705,19 +685,18 @@ TEST_P(PersistentVolumeTest, SlaveRecovery)
   frameworkInfo.set_role("role1");
   frameworkInfo.set_checkpoint(true);
 
-  Try<PID<Master>> master = StartMaster(MasterFlags({frameworkInfo}));
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(MasterFlags({frameworkInfo}));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
 
   slaveFlags.resources = getSlaveResources();
 
-  Try<PID<Slave>> slave = StartSlave(slaveFlags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), slaveFlags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+      &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -773,7 +752,7 @@ TEST_P(PersistentVolumeTest, SlaveRecovery)
   AWAIT_READY(ack);
 
   // Restart the slave.
-  Stop(slave.get());
+  slave->terminate();
 
   Future<SlaveReregisteredMessage> slaveReregisteredMessage =
     FUTURE_PROTOBUF(SlaveReregisteredMessage(), _, _);
@@ -781,8 +760,7 @@ TEST_P(PersistentVolumeTest, SlaveRecovery)
   Future<ReregisterExecutorMessage> reregisterExecutorMessage =
     FUTURE_PROTOBUF(ReregisterExecutorMessage(), _, _);
 
-  slave = StartSlave(slaveFlags);
-  ASSERT_SOME(slave);
+  slave = StartSlave(detector.get(), slaveFlags);
 
   Clock::pause();
 
@@ -813,8 +791,6 @@ TEST_P(PersistentVolumeTest, SlaveRecovery)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -854,21 +830,20 @@ TEST_P(PersistentVolumeTest, GoodACLCreateThenDestroy)
   masterFlags.acls = acls;
   masterFlags.roles = frameworkInfo.role();
 
-  Try<PID<Master>> master = StartMaster(masterFlags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(masterFlags);
 
   // Create a slave. Resources are being statically reserved because persistent
   // volume creation requires reserved resources.
   slave::Flags slaveFlags = CreateSlaveFlags();
   slaveFlags.resources = getSlaveResources();
 
-  Try<PID<Slave>> slave = StartSlave(slaveFlags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), slaveFlags);
 
   // Create a scheduler/framework.
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+      &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _));
 
@@ -895,7 +870,7 @@ TEST_P(PersistentVolumeTest, GoodACLCreateThenDestroy)
       None());
 
   Future<CheckpointResourcesMessage> checkpointResources1 =
-    FUTURE_PROTOBUF(CheckpointResourcesMessage(), _, slave.get());
+    FUTURE_PROTOBUF(CheckpointResourcesMessage(), _, slave->pid);
 
   // Create the persistent volume using `acceptOffers`.
   driver.acceptOffers(
@@ -928,7 +903,7 @@ TEST_P(PersistentVolumeTest, GoodACLCreateThenDestroy)
       volume)));
 
   Future<CheckpointResourcesMessage> checkpointResources2 =
-    FUTURE_PROTOBUF(CheckpointResourcesMessage(), _, slave.get());
+    FUTURE_PROTOBUF(CheckpointResourcesMessage(), _, slave->pid);
 
   // Destroy the persistent volume using `acceptOffers`.
   driver.acceptOffers(
@@ -957,8 +932,6 @@ TEST_P(PersistentVolumeTest, GoodACLCreateThenDestroy)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -1002,21 +975,20 @@ TEST_P(PersistentVolumeTest, GoodACLNoPrincipal)
   masterFlags.roles = frameworkInfo.role();
   masterFlags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(masterFlags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(masterFlags);
 
   // Create a slave. Resources are being statically reserved because persistent
   // volume creation requires reserved resources.
   slave::Flags slaveFlags = CreateSlaveFlags();
   slaveFlags.resources = getSlaveResources();
 
-  Try<PID<Slave>> slave = StartSlave(slaveFlags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), slaveFlags);
 
   // Create a scheduler/framework.
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+      &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _));
 
@@ -1043,7 +1015,7 @@ TEST_P(PersistentVolumeTest, GoodACLNoPrincipal)
       None());
 
   Future<CheckpointResourcesMessage> checkpointResources1 =
-    FUTURE_PROTOBUF(CheckpointResourcesMessage(), _, slave.get());
+    FUTURE_PROTOBUF(CheckpointResourcesMessage(), _, slave->pid);
 
   // Create the persistent volume using `acceptOffers`.
   driver.acceptOffers(
@@ -1076,7 +1048,7 @@ TEST_P(PersistentVolumeTest, GoodACLNoPrincipal)
       volume)));
 
   Future<CheckpointResourcesMessage> checkpointResources2 =
-    FUTURE_PROTOBUF(CheckpointResourcesMessage(), _, slave.get());
+    FUTURE_PROTOBUF(CheckpointResourcesMessage(), _, slave->pid);
 
   // Destroy the persistent volume using `acceptOffers`.
   driver.acceptOffers(
@@ -1105,8 +1077,6 @@ TEST_P(PersistentVolumeTest, GoodACLNoPrincipal)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -1154,19 +1124,18 @@ TEST_P(PersistentVolumeTest, BadACLNoPrincipal)
   masterFlags.roles = frameworkInfo1.role();
   masterFlags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(masterFlags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(masterFlags);
 
   // Create a slave.
   slave::Flags slaveFlags = CreateSlaveFlags();
   slaveFlags.resources = getSlaveResources();
 
-  Try<PID<Slave>> slave = StartSlave(slaveFlags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), slaveFlags);
 
   // Create a scheduler/framework.
   MockScheduler sched1;
-  MesosSchedulerDriver driver1(&sched1, frameworkInfo1, master.get());
+  MesosSchedulerDriver driver1(&sched1, frameworkInfo1, master->pid);
 
   EXPECT_CALL(sched1, registered(&driver1, _, _));
 
@@ -1220,7 +1189,7 @@ TEST_P(PersistentVolumeTest, BadACLNoPrincipal)
 
   // Create a second framework which can create volumes.
   MockScheduler sched2;
-  MesosSchedulerDriver driver2(&sched2, frameworkInfo2, master.get());
+  MesosSchedulerDriver driver2(&sched2, frameworkInfo2, master->pid);
 
   EXPECT_CALL(sched2, registered(&driver2, _, _));
 
@@ -1305,8 +1274,6 @@ TEST_P(PersistentVolumeTest, BadACLNoPrincipal)
 
   driver2.stop();
   driver2.join();
-
-  Shutdown();
 }
 
 
@@ -1354,19 +1321,18 @@ TEST_P(PersistentVolumeTest, BadACLDropCreateAndDestroy)
   masterFlags.roles = frameworkInfo1.role();
   masterFlags.authenticate_frameworks = false;
 
-  Try<PID<Master>> master = StartMaster(masterFlags);
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster(masterFlags);
 
   // Create a slave.
   slave::Flags slaveFlags = CreateSlaveFlags();
   slaveFlags.resources = getSlaveResources();
 
-  Try<PID<Slave>> slave = StartSlave(slaveFlags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+  Owned<cluster::Slave> slave = StartSlave(detector.get(), slaveFlags);
 
   // Create a scheduler/framework.
   MockScheduler sched1;
-  MesosSchedulerDriver driver1(&sched1, frameworkInfo1, master.get());
+  MesosSchedulerDriver driver1(&sched1, frameworkInfo1, master->pid);
 
   EXPECT_CALL(sched1, registered(&driver1, _, _));
 
@@ -1420,7 +1386,7 @@ TEST_P(PersistentVolumeTest, BadACLDropCreateAndDestroy)
 
   // Create a second framework which can create volumes.
   MockScheduler sched2;
-  MesosSchedulerDriver driver2(&sched2, frameworkInfo2, master.get());
+  MesosSchedulerDriver driver2(&sched2, frameworkInfo2, master->pid);
 
   EXPECT_CALL(sched2, registered(&driver2, _, _));
 
@@ -1505,8 +1471,6 @@ TEST_P(PersistentVolumeTest, BadACLDropCreateAndDestroy)
 
   driver2.stop();
   driver2.join();
-
-  Shutdown();
 }
 
 } // namespace tests {

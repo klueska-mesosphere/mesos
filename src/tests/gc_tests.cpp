@@ -29,6 +29,7 @@
 #include <process/future.hpp>
 #include <process/gmock.hpp>
 #include <process/http.hpp>
+#include <process/owned.hpp>
 #include <process/pid.hpp>
 #include <process/process.hpp>
 
@@ -62,6 +63,7 @@ using mesos::internal::slave::Slave;
 
 using process::Clock;
 using process::Future;
+using process::Owned;
 using process::PID;
 
 using std::list;
@@ -251,26 +253,27 @@ class GarbageCollectorIntegrationTest : public MesosTest {};
 // the slave working directory after a slave restart.
 TEST_F(GarbageCollectorIntegrationTest, Restart)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   Future<SlaveRegisteredMessage> slaveRegisteredMessage =
     FUTURE_PROTOBUF(SlaveRegisteredMessage(), _, _);
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
+  TestContainerizer containerizer(&exec);
 
   // Need to create our own flags because we want to reuse them when
   // we (re)start the slave below.
   slave::Flags flags = CreateSlaveFlags();
+  Owned<MasterDetector> detector = master->detector();
 
-  Try<PID<Slave> > slave = StartSlave(&exec, flags);
-  ASSERT_SOME(slave);
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &containerizer, flags);
 
   AWAIT_READY(slaveRegisteredMessage);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(_, _, _))
     .Times(1);
@@ -325,7 +328,7 @@ TEST_F(GarbageCollectorIntegrationTest, Restart)
 
   // Stop the slave with explicit shutdown as otherwise with
   // checkpointing the master will wait for the slave to reconnect.
-  Stop(slave.get(), true);
+  slave.get()->shutdown();
 
   AWAIT_READY(slaveLost);
 
@@ -334,8 +337,7 @@ TEST_F(GarbageCollectorIntegrationTest, Restart)
   Future<Nothing> schedule =
     FUTURE_DISPATCH(_, &GarbageCollectorProcess::schedule);
 
-  slave = StartSlave(flags);
-  ASSERT_SOME(slave);
+  slave = StartSlave(detector.get(), flags);
 
   AWAIT_READY(schedule);
 
@@ -352,32 +354,31 @@ TEST_F(GarbageCollectorIntegrationTest, Restart)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
 TEST_F(GarbageCollectorIntegrationTest, ExitedFramework)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   Future<SlaveRegisteredMessage> slaveRegisteredMessage =
     FUTURE_PROTOBUF(SlaveRegisteredMessage(), _, _);
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
+  TestContainerizer containerizer(&exec);
 
   slave::Flags flags = CreateSlaveFlags();
+  Owned<MasterDetector> detector = master->detector();
 
-  Try<PID<Slave> > slave = StartSlave(&exec, flags);
-  ASSERT_SOME(slave);
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &containerizer, flags);
 
   AWAIT_READY(slaveRegisteredMessage);
   SlaveID slaveId = slaveRegisteredMessage.get().slave_id();
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   // Scheduler expectations.
   FrameworkID frameworkId;
@@ -466,34 +467,31 @@ TEST_F(GarbageCollectorIntegrationTest, ExitedFramework)
       process::http::get(filesUpid, "browse", "path=" + frameworkDir));
 
   Clock::resume();
-
-  Shutdown(); // Must shutdown before 'isolator' gets deallocated.
 }
 
 
 TEST_F(GarbageCollectorIntegrationTest, ExitedExecutor)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
-
   TestContainerizer containerizer(&exec);
 
   Future<SlaveRegisteredMessage> slaveRegisteredMessage =
     FUTURE_PROTOBUF(SlaveRegisteredMessage(), _, _);
 
   slave::Flags flags = CreateSlaveFlags();
+  Owned<MasterDetector> detector = master->detector();
 
-  Try<PID<Slave> > slave = StartSlave(&containerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &containerizer, flags);
 
   AWAIT_READY(slaveRegisteredMessage);
   SlaveID slaveId = slaveRegisteredMessage.get().slave_id();
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(_, _, _))
@@ -572,34 +570,31 @@ TEST_F(GarbageCollectorIntegrationTest, ExitedExecutor)
 
   driver.stop();
   driver.join();
-
-  Shutdown(); // Must shutdown before 'isolator' gets deallocated.
 }
 
 
 TEST_F(GarbageCollectorIntegrationTest, DiskUsage)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
-
   TestContainerizer containerizer(&exec);
 
   Future<SlaveRegisteredMessage> slaveRegisteredMessage =
     FUTURE_PROTOBUF(SlaveRegisteredMessage(), _, _);
 
   slave::Flags flags = CreateSlaveFlags();
+  Owned<MasterDetector> detector = master->detector();
 
-  Try<PID<Slave> > slave = StartSlave(&containerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &containerizer, flags);
 
   AWAIT_READY(slaveRegisteredMessage);
   SlaveID slaveId = slaveRegisteredMessage.get().slave_id();
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(_, _, _))
@@ -669,7 +664,7 @@ TEST_F(GarbageCollectorIntegrationTest, DiskUsage)
 
   // Simulate a disk full message to the slave.
   process::dispatch(
-      slave.get(),
+      slave->pid,
       &Slave::_checkDiskUsage,
       Try<double>(1.0 - slave::GC_DISK_HEADROOM));
 
@@ -689,8 +684,6 @@ TEST_F(GarbageCollectorIntegrationTest, DiskUsage)
 
   driver.stop();
   driver.join();
-
-  Shutdown(); // Must shutdown before 'isolator' gets deallocated.
 }
 
 
@@ -699,8 +692,7 @@ TEST_F(GarbageCollectorIntegrationTest, DiskUsage)
 // executor.
 TEST_F(GarbageCollectorIntegrationTest, Unschedule)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   Future<SlaveRegisteredMessage> slaveRegistered =
     FUTURE_PROTOBUF(SlaveRegisteredMessage(), _, _);
@@ -718,15 +710,16 @@ TEST_F(GarbageCollectorIntegrationTest, Unschedule)
   TestContainerizer containerizer(execs);
 
   slave::Flags flags = CreateSlaveFlags();
+  Owned<MasterDetector> detector = master->detector();
 
-  Try<PID<Slave> > slave = StartSlave(&containerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &containerizer, flags);
 
   AWAIT_READY(slaveRegistered);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(_, _, _))
@@ -820,8 +813,6 @@ TEST_F(GarbageCollectorIntegrationTest, Unschedule)
 
   driver.stop();
   driver.join();
-
-  Shutdown(); // Must shutdown before 'isolator' gets deallocated.
 }
 
 } // namespace tests {

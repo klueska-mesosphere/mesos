@@ -55,11 +55,6 @@ using mesos::internal::slave::Slave;
 
 using mesos::slave::ContainerLogger;
 
-using process::Future;
-using process::Message;
-using process::PID;
-using process::UPID;
-
 using std::list;
 using std::string;
 using std::vector;
@@ -170,8 +165,7 @@ public:
 #ifdef __linux__
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_Launch_Executor)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -193,12 +187,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Launch_Executor)
       Owned<ContainerLogger>(logger.get()),
       docker);
 
-  Try<PID<Slave> > slave = StartSlave(&dockerContainerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer, flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-    &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+    &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -279,8 +275,6 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Launch_Executor)
 
   ASSERT_FALSE(
     exists(docker, slaveId, containerId.get(), ContainerState::RUNNING));
-
-  Shutdown();
 }
 
 
@@ -296,8 +290,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Launch_Executor)
 // TODO(tnachen): Re-enable this test when we are able to fix MESOS-3123.
 TEST_F(DockerContainerizerTest, DISABLED_ROOT_DOCKER_Launch_Executor_Bridged)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -319,12 +312,14 @@ TEST_F(DockerContainerizerTest, DISABLED_ROOT_DOCKER_Launch_Executor_Bridged)
       Owned<ContainerLogger>(logger.get()),
       docker);
 
-  Try<PID<Slave> > slave = StartSlave(&dockerContainerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer, flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-    &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+    &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -406,16 +401,13 @@ TEST_F(DockerContainerizerTest, DISABLED_ROOT_DOCKER_Launch_Executor_Bridged)
 
   ASSERT_FALSE(
     exists(docker, slaveId, containerId.get(), ContainerState::RUNNING));
-
-  Shutdown();
 }
 #endif // __linux__
 
 
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_Launch)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -437,12 +429,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Launch)
       Owned<ContainerLogger>(logger.get()),
       docker);
 
-  Try<PID<Slave> > slave = StartSlave(&dockerContainerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer, flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -506,7 +500,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Launch)
   ASSERT_SOME(array);
 
   // Check if container information is exposed through master's state endpoint.
-  Future<http::Response> response = http::get(master.get(), "state");
+  Future<http::Response> response = http::get(master->pid, "state");
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(process::http::OK().status, response);
 
   Try<JSON::Object> parse = JSON::parse<JSON::Object>(response.get().body);
@@ -518,7 +512,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Launch)
   EXPECT_SOME_EQ(false, find);
 
   // Check if container information is exposed through slave's state endpoint.
-  response = http::get(slave.get(), "state");
+  response = http::get(slave->pid, "state");
   AWAIT_EXPECT_RESPONSE_STATUS_EQ(process::http::OK().status, response);
 
   parse = JSON::parse<JSON::Object>(response.get().body);
@@ -547,15 +541,12 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Launch)
 
   ASSERT_FALSE(
     exists(docker, slaveId, containerId.get(), ContainerState::RUNNING));
-
-  Shutdown();
 }
 
 
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_Kill)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -577,12 +568,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Kill)
       Owned<ContainerLogger>(logger.get()),
       docker);
 
-  Try<PID<Slave> > slave = StartSlave(&dockerContainerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer, flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -662,16 +655,13 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Kill)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
 // This test tests DockerContainerizer::usage().
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_Usage)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   slave::Flags flags = CreateSlaveFlags();
   flags.resources = Option<string>("cpus:2;mem:1024");
@@ -694,12 +684,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Usage)
       Owned<ContainerLogger>(logger.get()),
       docker);
 
-  Try<PID<Slave> > slave = StartSlave(&dockerContainerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer, flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -807,16 +799,13 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Usage)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
 #ifdef __linux__
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_Update)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -838,12 +827,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Update)
       Owned<ContainerLogger>(logger.get()),
       docker);
 
-  Try<PID<Slave> > slave = StartSlave(&dockerContainerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer, flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -973,8 +964,6 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Update)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 #endif // __linux__
 
@@ -1098,8 +1087,6 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Recover)
   AWAIT_FAILED(dockerContainerizer.wait(reapedContainerId));
 
   AWAIT_EQ(inspect.get().id, stoppedContainer);
-
-  Shutdown();
 }
 
 
@@ -1168,8 +1155,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_SkipRecoverNonDocker)
 
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_Logs)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -1197,12 +1183,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Logs)
   EXPECT_CALL(*mockDocker, stop(_, _, _))
     .WillRepeatedly(Return(Nothing()));
 
-  Try<PID<Slave> > slave = StartSlave(&dockerContainerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer, flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -1288,8 +1276,6 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Logs)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -1297,8 +1283,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Logs)
 // an entrypoint "echo" and a default command "inky".
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_Default_CMD)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -1326,12 +1311,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Default_CMD)
   EXPECT_CALL(*mockDocker, stop(_, _, _))
     .WillRepeatedly(Return(Nothing()));
 
-  Try<PID<Slave> > slave = StartSlave(&dockerContainerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer, flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -1420,8 +1407,6 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Default_CMD)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -1429,8 +1414,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Default_CMD)
 // an entrypoint "echo" and a default command "inky".
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_Default_CMD_Override)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -1458,12 +1442,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Default_CMD_Override)
   EXPECT_CALL(*mockDocker, stop(_, _, _))
     .WillRepeatedly(Return(Nothing()));
 
-  Try<PID<Slave> > slave = StartSlave(&dockerContainerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer, flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -1555,8 +1541,6 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Default_CMD_Override)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -1564,8 +1548,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Default_CMD_Override)
 // an entrypoint "echo" and a default command "inky".
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_Default_CMD_Args)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -1593,12 +1576,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Default_CMD_Args)
   EXPECT_CALL(*mockDocker, stop(_, _, _))
     .WillRepeatedly(Return(Nothing()));
 
-  Try<PID<Slave> > slave = StartSlave(&dockerContainerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer, flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -1691,8 +1676,6 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Default_CMD_Args)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -1701,8 +1684,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Default_CMD_Args)
 // re-registers and the slave properly sends the update.
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_SlaveRecoveryTaskContainer)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -1719,17 +1701,17 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_SlaveRecoveryTaskContainer)
 
   ASSERT_SOME(logger);
 
-  // We put the containerizer on the heap so we can more easily
-  // control it's lifetime, i.e., when we invoke the destructor.
-  MockDockerContainerizer* dockerContainerizer1 =
-    new MockDockerContainerizer(
-        flags,
-        &fetcher,
-        Owned<ContainerLogger>(logger.get()),
-        docker);
+  Owned<MockDockerContainerizer> dockerContainerizer(
+      new MockDockerContainerizer(
+          flags,
+          &fetcher,
+          Owned<ContainerLogger>(logger.get()),
+          docker));
 
-  Try<PID<Slave> > slave1 = StartSlave(dockerContainerizer1, flags);
-  ASSERT_SOME(slave1);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), dockerContainerizer.get(), flags);
 
   // Enable checkpointing for the framework.
   FrameworkInfo frameworkInfo = DEFAULT_FRAMEWORK_INFO;
@@ -1737,7 +1719,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_SlaveRecoveryTaskContainer)
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+      &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -1780,9 +1762,9 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_SlaveRecoveryTaskContainer)
   task.mutable_container()->CopyFrom(containerInfo);
 
   Future<ContainerID> containerId;
-  EXPECT_CALL(*dockerContainerizer1, launch(_, _, _, _, _, _, _, _))
+  EXPECT_CALL(*dockerContainerizer, launch(_, _, _, _, _, _, _, _))
     .WillOnce(DoAll(FutureArg<0>(&containerId),
-                    Invoke(dockerContainerizer1,
+                    Invoke(dockerContainerizer.get(),
                            &MockDockerContainerizer::_launch)));
 
   // Drop the first update from the executor.
@@ -1796,9 +1778,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_SlaveRecoveryTaskContainer)
   // Stop the slave before the status update is received.
   AWAIT_READY(statusUpdateMessage);
 
-  Stop(slave1.get());
-
-  delete dockerContainerizer1;
+  slave->terminate();
 
   Future<Message> reregisterExecutorMessage =
     FUTURE_MESSAGE(Eq(ReregisterExecutorMessage().GetTypeName()), _, _);
@@ -1812,15 +1792,13 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_SlaveRecoveryTaskContainer)
   logger = ContainerLogger::create(flags.container_logger);
   ASSERT_SOME(logger);
 
-  MockDockerContainerizer* dockerContainerizer2 =
-    new MockDockerContainerizer(
-        flags,
-        &fetcher,
-        Owned<ContainerLogger>(logger.get()),
-        docker);
+  dockerContainerizer.reset(new MockDockerContainerizer(
+      flags,
+      &fetcher,
+      Owned<ContainerLogger>(logger.get()),
+      docker));
 
-  Try<PID<Slave> > slave2 = StartSlave(dockerContainerizer2, flags);
-  ASSERT_SOME(slave2);
+  slave = StartSlave(detector.get(), dockerContainerizer.get(), flags);
 
   // Ensure the executor re-registers.
   AWAIT_READY(reregisterExecutorMessage);
@@ -1842,16 +1820,12 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_SlaveRecoveryTaskContainer)
   ASSERT_TRUE(exists(docker, slaveId, containerId.get()));
 
   Future<containerizer::Termination> termination =
-    dockerContainerizer2->wait(containerId.get());
+    dockerContainerizer->wait(containerId.get());
 
   driver.stop();
   driver.join();
 
   AWAIT_READY(termination);
-
-  Shutdown();
-
-  delete dockerContainerizer2;
 }
 
 
@@ -1870,8 +1844,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_SlaveRecoveryTaskContainer)
 TEST_F(DockerContainerizerTest,
        DISABLED_ROOT_DOCKER_SlaveRecoveryExecutorContainer)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -1888,17 +1861,17 @@ TEST_F(DockerContainerizerTest,
 
   ASSERT_SOME(logger);
 
-  // We put the containerizer on the heap so we can more easily
-  // control it's lifetime, i.e., when we invoke the destructor.
-  MockDockerContainerizer* dockerContainerizer1 =
-    new MockDockerContainerizer(
-        flags,
-        &fetcher,
-        Owned<ContainerLogger>(logger.get()),
-        docker);
+  Owned<MockDockerContainerizer> dockerContainerizer(
+      new MockDockerContainerizer(
+          flags,
+          &fetcher,
+          Owned<ContainerLogger>(logger.get()),
+          docker));
 
-  Try<PID<Slave> > slave1 = StartSlave(dockerContainerizer1, flags);
-  ASSERT_SOME(slave1);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), dockerContainerizer.get(), flags);
 
   // Enable checkpointing for the framework.
   FrameworkInfo frameworkInfo = DEFAULT_FRAMEWORK_INFO;
@@ -1906,7 +1879,7 @@ TEST_F(DockerContainerizerTest,
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, frameworkInfo, master.get(), DEFAULT_CREDENTIAL);
+      &sched, frameworkInfo, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -1955,10 +1928,10 @@ TEST_F(DockerContainerizerTest,
 
   Future<ContainerID> containerId;
   Future<SlaveID> slaveId;
-  EXPECT_CALL(*dockerContainerizer1, launch(_, _, _, _, _, _, _))
+  EXPECT_CALL(*dockerContainerizer, launch(_, _, _, _, _, _, _))
     .WillOnce(DoAll(FutureArg<0>(&containerId),
                     FutureArg<4>(&slaveId),
-                    Invoke(dockerContainerizer1,
+                    Invoke(dockerContainerizer.get(),
                            &MockDockerContainerizer::_launchExecutor)));
 
   // We need to wait until the container's pid has been been
@@ -1990,9 +1963,7 @@ TEST_F(DockerContainerizerTest,
   AWAIT_READY(statusUpdateMessage1);
   AWAIT_READY(statusUpdateMessage2);
 
-  Stop(slave1.get());
-
-  delete dockerContainerizer1;
+  slave->terminate();
 
   Future<Message> reregisterExecutorMessage =
     FUTURE_MESSAGE(Eq(ReregisterExecutorMessage().GetTypeName()), _, _);
@@ -2006,15 +1977,13 @@ TEST_F(DockerContainerizerTest,
   logger = ContainerLogger::create(flags.container_logger);
   ASSERT_SOME(logger);
 
-  MockDockerContainerizer* dockerContainerizer2 =
-    new MockDockerContainerizer(
-        flags,
-        &fetcher,
-        Owned<ContainerLogger>(logger.get()),
-        docker);
+  dockerContainerizer.reset(new MockDockerContainerizer(
+      flags,
+      &fetcher,
+      Owned<ContainerLogger>(logger.get()),
+      docker));
 
-  Try<PID<Slave> > slave2 = StartSlave(dockerContainerizer2, flags);
-  ASSERT_SOME(slave2);
+  slave = StartSlave(detector.get(), dockerContainerizer.get(), flags);
 
   // Ensure the executor re-registers.
   AWAIT_READY(reregisterExecutorMessage);
@@ -2037,8 +2006,6 @@ TEST_F(DockerContainerizerTest,
 
   driver.stop();
   driver.join();
-
-  delete dockerContainerizer2;
 }
 
 
@@ -2048,8 +2015,7 @@ TEST_F(DockerContainerizerTest,
 // to the mapped container port.
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_NC_PortMapping)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -2078,12 +2044,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_NC_PortMapping)
   EXPECT_CALL(*mockDocker, stop(_, _, _))
     .WillRepeatedly(Return(Nothing()));
 
-  Try<PID<Slave> > slave = StartSlave(&dockerContainerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer, flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -2190,8 +2158,6 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_NC_PortMapping)
   driver.join();
 
   AWAIT_READY(termination);
-
-  Shutdown();
 }
 
 
@@ -2201,8 +2167,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_NC_PortMapping)
 // and incorrectly seperates the sandbox directory.
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_LaunchSandboxWithColon)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -2224,12 +2189,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_LaunchSandboxWithColon)
       Owned<ContainerLogger>(logger.get()),
       docker);
 
-  Try<PID<Slave> > slave = StartSlave(&dockerContainerizer, flags);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer, flags);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -2297,15 +2264,12 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_LaunchSandboxWithColon)
   driver.join();
 
   AWAIT_READY(termination);
-
-  Shutdown();
 }
 
 
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_DestroyWhileFetching)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -2341,12 +2305,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_DestroyWhileFetching)
     .WillOnce(DoAll(FutureSatisfy(&fetch),
                     Return(promise.future())));
 
-  Try<PID<Slave> > slave = StartSlave(&dockerContainerizer);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -2413,15 +2379,12 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_DestroyWhileFetching)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_DestroyWhilePulling)
 {
-  Try<PID<Master> > master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -2460,12 +2423,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_DestroyWhilePulling)
   EXPECT_CALL(*process, pull(_))
     .WillOnce(Return(promise.future()));
 
-  Try<PID<Slave> > slave = StartSlave(&dockerContainerizer);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -2533,8 +2498,6 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_DestroyWhilePulling)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
@@ -2543,8 +2506,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_DestroyWhilePulling)
 // is properly killed and cleaned up.
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_ExecutorCleanupWhenLaunchFailed)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -2572,12 +2534,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_ExecutorCleanupWhenLaunchFailed)
   MockDockerContainerizer dockerContainerizer(
       (Owned<DockerContainerizerProcess>(process)));
 
-  Try<PID<Slave>> slave = StartSlave(&dockerContainerizer);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -2641,10 +2605,6 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_ExecutorCleanupWhenLaunchFailed)
 
   driver.stop();
   driver.join();
-
-  // We expect the executor to have exited, and if not in Shutdown
-  // the test will fail because of the executor process still running.
-  Shutdown();
 }
 
 
@@ -2652,8 +2612,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_ExecutorCleanupWhenLaunchFailed)
 // update with message the shows the actual error.
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_FetchFailure)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -2681,12 +2640,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_FetchFailure)
   MockDockerContainerizer dockerContainerizer(
       (Owned<DockerContainerizerProcess>(process)));
 
-  Try<PID<Slave>> slave = StartSlave(&dockerContainerizer);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -2753,10 +2714,6 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_FetchFailure)
 
   driver.stop();
   driver.join();
-
-  // We expect the executor to have exited, and if not in Shutdown
-  // the test will fail because of the executor process still running.
-  Shutdown();
 }
 
 
@@ -2764,8 +2721,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_FetchFailure)
 // update with message the shows the actual error.
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_DockerPullFailure)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -2793,12 +2749,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_DockerPullFailure)
   MockDockerContainerizer dockerContainerizer(
       (Owned<DockerContainerizerProcess>(process)));
 
-  Try<PID<Slave>> slave = StartSlave(&dockerContainerizer);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -2865,10 +2823,6 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_DockerPullFailure)
 
   driver.stop();
   driver.join();
-
-  // We expect the executor to have exited, and if not in Shutdown
-  // the test will fail because of the executor process still running.
-  Shutdown();
 }
 
 
@@ -2876,8 +2830,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_DockerPullFailure)
 // future that is in a retry loop should be discarded.
 TEST_F(DockerContainerizerTest, ROOT_DOCKER_DockerInspectDiscard)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -2914,12 +2867,14 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_DockerInspectDiscard)
   EXPECT_CALL(*mockDocker, run(_, _, _, _, _, _, _, _, _))
     .WillOnce(Return(Failure("Run failed")));
 
-  Try<PID<Slave>> slave = StartSlave(&dockerContainerizer);
-  ASSERT_SOME(slave);
+  Owned<MasterDetector> detector = master->detector();
+
+  Owned<cluster::Slave> slave = StartSlave(
+      detector.get(), &dockerContainerizer);
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   Future<FrameworkID> frameworkId;
   EXPECT_CALL(sched, registered(&driver, _, _))
@@ -2987,10 +2942,6 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_DockerInspectDiscard)
 
   driver.stop();
   driver.join();
-
-  // We expect the inspect to have exited, and if not in Shutdown
-  // the test will fail because of the inspect process still running.
-  Shutdown();
 }
 
 } // namespace tests {
