@@ -1,3 +1,7 @@
+---
+title: Mesos - HTTP Endpoints - state-summary
+layout: documentation
+---
 <!--- This is an automatically generated file. DO NOT EDIT! --->
 
 ### USAGE ###

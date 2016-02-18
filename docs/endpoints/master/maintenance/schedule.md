@@ -1,3 +1,7 @@
+---
+title: Mesos - HTTP Endpoints - maintenance/schedule
+layout: documentation
+---
 <!--- This is an automatically generated file. DO NOT EDIT! --->
 
 ### USAGE ###
