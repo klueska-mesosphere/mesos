@@ -53,8 +53,10 @@ class ResourceOffersTest : public MesosTest {};
 
 TEST_F(ResourceOffersTest, ResourceOfferWithMultipleSlaves)
 {
-  Try<PID<Master>> master = StartMaster();
-  ASSERT_SOME(master);
+  Owned<cluster::Master> master = StartMaster();
+
+  Owned<MasterDetector> detector = master->detector();
+  vector<Owned<cluster::Slave>> slaves;
 
   // Start 10 slaves.
   for (int i = 0; i < 10; i++) {
@@ -62,13 +64,12 @@ TEST_F(ResourceOffersTest, ResourceOfferWithMultipleSlaves)
 
     flags.resources = Option<std::string>("cpus:2;mem:1024");
 
-    Try<PID<Slave>> slave = StartSlave(flags);
-    ASSERT_SOME(slave);
+    slaves.push_back(StartSlave(detector.get(), flags));
   }
 
   MockScheduler sched;
   MesosSchedulerDriver driver(
-      &sched, DEFAULT_FRAMEWORK_INFO, master.get(), DEFAULT_CREDENTIAL);
+      &sched, DEFAULT_FRAMEWORK_INFO, master->pid, DEFAULT_CREDENTIAL);
 
   EXPECT_CALL(sched, registered(&driver, _, _))
     .Times(1);
@@ -90,8 +91,6 @@ TEST_F(ResourceOffersTest, ResourceOfferWithMultipleSlaves)
 
   driver.stop();
   driver.join();
-
-  Shutdown();
 }
 
 
