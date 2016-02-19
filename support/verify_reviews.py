@@ -80,17 +80,18 @@ def apply_review(review_id):
 
 
 def apply_reviews(review_request, reviews):
+    # If there are no reviewers specified, throw an error.
+    if not review_request["target_people"]:
+        raise ReviewError("No reviewers specified. Please find a reviewer by"
+                          " asking on JIRA or the mailing list.")
+
     # If there is a circular dependency throw an error.`
     if review_request["id"] in reviews:
         raise ReviewError("Circular dependency detected for review %s."
                           "Please fix the 'depends_on' field."
                           % review_request["id"])
-
-    if not review_request["target_people"]:
-        raise ReviewError("No reviewers specified. Please find a reviewer by"
-                          " asking on JIRA or the mailing list.")
-
-    reviews.append(review_request["id"])
+    else:
+        reviews.append(review_request["id"])
 
     # First recursively apply the dependent reviews.
     for review in review_request["depends_on"]:
