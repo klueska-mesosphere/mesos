@@ -36,10 +36,11 @@ std::ostream& operator<<(std::ostream& stream, const Attribute& attribute)
 {
   stream << attribute.name() << "=";
   switch (attribute.type()) {
-    case Value::SCALAR: stream << attribute.scalar(); break;
-    case Value::RANGES: stream << attribute.ranges(); break;
-    case Value::SET:    stream << attribute.set();    break;
-    case Value::TEXT:   stream << attribute.text();   break;
+    case Value::INTEGER: stream << attribute.integer(); break;
+    case Value::SCALAR:  stream << attribute.scalar();  break;
+    case Value::RANGES:  stream << attribute.ranges();  break;
+    case Value::SET:     stream << attribute.set();     break;
+    case Value::TEXT:    stream << attribute.text();    break;
     default:
       LOG(FATAL) << "Unexpected Value type: " << attribute.type();
       break;
@@ -62,6 +63,11 @@ bool Attributes::operator==(const Attributes& that) const
     }
     const Attribute& thatAttribute = maybeAttribute.get();
     switch (attribute.type()) {
+    case Value::INTEGER:
+      if (!(attribute.integer() == thatAttribute.integer())) {
+        return false;
+      }
+      break;
     case Value::SCALAR:
       if (!(attribute.scalar() == thatAttribute.scalar())) {
         return false;
@@ -118,6 +124,9 @@ Attribute Attributes::parse(const string& name, const string& text)
     } else if (value.type() == Value::TEXT) {
       attribute.set_type(Value::TEXT);
       attribute.mutable_text()->MergeFrom(value.text());
+    } else if (value.type() == Value::INTEGER) {
+      attribute.set_type(Value::INTEGER);
+      attribute.mutable_integer()->MergeFrom(value.integer());
     } else if (value.type() == Value::SCALAR) {
       attribute.set_type(Value::SCALAR);
       attribute.mutable_scalar()->MergeFrom(value.scalar());
@@ -161,7 +170,9 @@ bool Attributes::isValid(const Attribute& attribute)
     return false;
     }
 
-  if (attribute.type() == Value::SCALAR) {
+  if (attribute.type() == Value::INTEGER) {
+    return attribute.has_integer();
+  } else if (attribute.type() == Value::SCALAR) {
     return attribute.has_scalar();
   } else if (attribute.type() == Value::RANGES) {
     return attribute.has_ranges();
@@ -173,6 +184,22 @@ bool Attributes::isValid(const Attribute& attribute)
   }
 
     return false;
+}
+
+
+template <>
+Value::Integer Attributes::get(
+    const string& name,
+    const Value::Integer& integer) const
+{
+  foreach (const Attribute& attribute, attributes) {
+    if (attribute.name() == name &&
+        attribute.type() == Value::INTEGER) {
+      return attribute.integer();
+    }
+  }
+
+  return integer;
 }
 
 

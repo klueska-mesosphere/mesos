@@ -5182,7 +5182,9 @@ double Slave::_resources_total(const string& name)
   double total = 0.0;
 
   foreach (const Resource& resource, info.resources()) {
-    if (resource.name() == name && resource.type() == Value::SCALAR) {
+    if (resource.name() == name && resource.type() == Value::INTEGER) {
+      total += resource.integer().value();
+    } else if (resource.name() == name && resource.type() == Value::SCALAR) {
       total += resource.scalar().value();
     }
   }
@@ -5198,7 +5200,10 @@ double Slave::_resources_used(const string& name)
   foreachvalue (Framework* framework, frameworks) {
     foreachvalue (Executor* executor, framework->executors) {
       foreach (const Resource& resource, executor->resources.nonRevocable()) {
-        if (resource.name() == name && resource.type() == Value::SCALAR) {
+        if (resource.name() == name && resource.type() == Value::INTEGER) {
+          used += resource.integer().value();
+        } else if (resource.name() == name &&
+                   resource.type() == Value::SCALAR) {
           used += resource.scalar().value();
         }
       }
@@ -5227,7 +5232,9 @@ double Slave::_resources_revocable_total(const string& name)
 
   if (oversubscribedResources.isSome()) {
     foreach (const Resource& resource, oversubscribedResources.get()) {
-      if (resource.name() == name && resource.type() == Value::SCALAR) {
+      if (resource.name() == name && resource.type() == Value::INTEGER) {
+        total += resource.integer().value();
+      } else if (resource.name() == name && resource.type() == Value::SCALAR) {
         total += resource.scalar().value();
       }
     }
@@ -5244,7 +5251,10 @@ double Slave::_resources_revocable_used(const string& name)
   foreachvalue (Framework* framework, frameworks) {
     foreachvalue (Executor* executor, framework->executors) {
       foreach (const Resource& resource, executor->resources.revocable()) {
-        if (resource.name() == name && resource.type() == Value::SCALAR) {
+        if (resource.name() == name && resource.type() == Value::INTEGER) {
+          used += resource.integer().value();
+        } else if (resource.name() == name &&
+                   resource.type() == Value::SCALAR) {
           used += resource.scalar().value();
         }
       }

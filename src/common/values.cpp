@@ -643,7 +643,13 @@ Try<Value> parse(const string& text)
       return value;
     } else if (index == string::npos) {
       try {
-        // This is a scalar.
+        // This is a scalar or an integer.
+        //
+        // TODO(klueska): Figure out how to disambiguate between a
+        // scalar and an integer type here. For now we just assume
+        // SCALAR and then have to special case at the callsite to
+        // convert to an integer type when we know the resource type
+        // should be INTEGER.
         value.set_type(Value::SCALAR);
         Value::Scalar* scalar = value.mutable_scalar();
         scalar->set_value(boost::lexical_cast<double>(temp));

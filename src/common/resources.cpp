@@ -207,7 +207,9 @@ bool operator==(const Resource& left, const Resource& right)
     return false;
   }
 
-  if (left.type() == Value::SCALAR) {
+  if (left.type() == Value::INTEGER) {
+    return left.integer() == right.integer();
+  } else if (left.type() == Value::SCALAR) {
     return left.scalar() == right.scalar();
   } else if (left.type() == Value::RANGES) {
     return left.ranges() == right.ranges();
@@ -345,7 +347,9 @@ static bool contains(const Resource& left, const Resource& right)
     return false;
   }
 
-  if (left.type() == Value::SCALAR) {
+  if (left.type() == Value::INTEGER) {
+    return right.integer() <= left.integer();
+  } else if (left.type() == Value::SCALAR) {
     return right.scalar() <= left.scalar();
   } else if (left.type() == Value::RANGES) {
     return right.ranges() <= left.ranges();
@@ -466,7 +470,9 @@ static Try<Resources> convertJSON(
 
 Resource& operator+=(Resource& left, const Resource& right)
 {
-  if (left.type() == Value::SCALAR) {
+  if (left.type() == Value::INTEGER) {
+    *left.mutable_integer() += right.integer();
+  } else if (left.type() == Value::SCALAR) {
     *left.mutable_scalar() += right.scalar();
   } else if (left.type() == Value::RANGES) {
     *left.mutable_ranges() += right.ranges();
@@ -488,7 +494,9 @@ Resource operator+(const Resource& left, const Resource& right)
 
 Resource& operator-=(Resource& left, const Resource& right)
 {
-  if (left.type() == Value::SCALAR) {
+  if (left.type() == Value::INTEGER) {
+    *left.mutable_integer() -= right.integer();
+  } else if (left.type() == Value::SCALAR) {
     *left.mutable_scalar() -= right.scalar();
   } else if (left.type() == Value::RANGES) {
     *left.mutable_ranges() -= right.ranges();
@@ -530,7 +538,10 @@ Try<Resource> Resources::parse(
   resource.set_name(name);
   resource.set_role(role);
 
-  if (_value.type() == Value::SCALAR) {
+  if (_value.type() == Value::INTEGER) {
+    resource.set_type(Value::INTEGER);
+    resource.mutable_integer()->CopyFrom(_value.integer());
+  } else if (_value.type() == Value::SCALAR) {
     resource.set_type(Value::SCALAR);
     resource.mutable_scalar()->CopyFrom(_value.scalar());
   } else if (_value.type() == Value::RANGES) {
@@ -627,8 +638,20 @@ Option<Error> Resources::validate(const Resource& resource)
     return Error("Invalid resource type");
   }
 
-  if (resource.type() == Value::SCALAR) {
-    if (!resource.has_scalar() ||
+  if (resource.type() == Value::INTEGER) {
+    if (!resource.has_integer() ||
+        resource.has_scalar() ||
+        resource.has_ranges() ||
+        resource.has_set()) {
+      return Error("Invalid integer resource");
+    }
+
+    if (resource.integer().value() < 0) {
+      return Error("Invalid integer resource: value < 0");
+    }
+  } else if (resource.type() == Value::SCALAR) {
+    if (resource.has_integer() ||
+        !resource.has_scalar() ||
         resource.has_ranges() ||
         resource.has_set()) {
       return Error("Invalid scalar resource");
@@ -638,7 +661,8 @@ Option<Error> Resources::validate(const Resource& resource)
       return Error("Invalid scalar resource: value < 0");
     }
   } else if (resource.type() == Value::RANGES) {
-    if (resource.has_scalar() ||
+    if (resource.has_integer() ||
+        resource.has_scalar() ||
         !resource.has_ranges() ||
         resource.has_set()) {
       return Error("Invalid ranges resource");
@@ -661,7 +685,8 @@ Option<Error> Resources::validate(const Resource& resource)
       }
     }
   } else if (resource.type() == Value::SET) {
-    if (resource.has_scalar() ||
+    if (resource.has_integer() ||
+        resource.has_scalar() ||
         resource.has_ranges() ||
         !resource.has_set()) {
       return Error("Invalid set resource");
@@ -741,7 +766,9 @@ Option<Error> Resources::validate(const RepeatedPtrField<Resource>& resources)
 
 bool Resources::isEmpty(const Resource& resource)
 {
-  if (resource.type() == Value::SCALAR) {
+  if (resource.type() == Value::INTEGER) {
+    return resource.integer().value() == 0;
+  } else if (resource.type() == Value::SCALAR) {
     return resource.scalar().value() == 0;
   } else if (resource.type() == Value::RANGES) {
     return resource.ranges().range_size() == 0;
@@ -1096,6 +1123,28 @@ Try<Resources> Resources::apply(const Offer::Operation& operation) const
 
 
 template <>
+Option<Value::Integer> Resources::get(const string& name) const
+{
+  Value::Integer total;
+  bool found = false;
+
+  foreach (const Resource& resource, resources) {
+    if (resource.name() == name &&
+        resource.type() == Value::INTEGER) {
+      total += resource.integer();
+      found = true;
+    }
+  }
+
+  if (found) {
+    return total;
+  }
+
+  return None();
+}
+
+
+template <>
 Option<Value::Scalar> Resources::get(const string& name) const
 {
   Value::Scalar total;
@@ -1165,6 +1214,14 @@ Resources Resources::get(const string& name) const
 {
   return filter([=](const Resource& resource) {
     return resource.name() == name;
+  });
+}
+
+
+Resources Resources::integers() const
+{
+  return filter([=](const Resource& resource) {
+    return resource.type() == Value::INTEGER;
   });
 }
 
@@ -1530,9 +1587,10 @@ ostream& operator<<(ostream& stream, const Resource& resource)
   stream << ":";
 
   switch (resource.type()) {
-    case Value::SCALAR: stream << resource.scalar(); break;
-    case Value::RANGES: stream << resource.ranges(); break;
-    case Value::SET:    stream << resource.set();    break;
+    case Value::INTEGER: stream << resource.integer(); break;
+    case Value::SCALAR:  stream << resource.scalar();  break;
+    case Value::RANGES:  stream << resource.ranges();  break;
+    case Value::SET:     stream << resource.set();     break;
     default:
       LOG(FATAL) << "Unexpected Value type: " << resource.type();
       break;

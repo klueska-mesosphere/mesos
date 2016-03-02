@@ -6957,7 +6957,9 @@ double Master::_resources_total(const string& name)
 
   foreachvalue (Slave* slave, slaves.registered) {
     foreach (const Resource& resource, slave->info.resources()) {
-      if (resource.name() == name && resource.type() == Value::SCALAR) {
+      if (resource.name() == name && resource.type() == Value::INTEGER) {
+        total += resource.integer().value();
+      } else if (resource.name() == name && resource.type() == Value::SCALAR) {
         total += resource.scalar().value();
       }
     }
@@ -6974,7 +6976,10 @@ double Master::_resources_used(const string& name)
   foreachvalue (Slave* slave, slaves.registered) {
     foreachvalue (const Resources& resources, slave->usedResources) {
       foreach (const Resource& resource, resources.nonRevocable()) {
-        if (resource.name() == name && resource.type() == Value::SCALAR) {
+        if (resource.name() == name && resource.type() == Value::INTEGER) {
+          used += resource.integer().value();
+        } else if (resource.name() == name &&
+                   resource.type() == Value::SCALAR) {
           used += resource.scalar().value();
         }
       }
@@ -7003,7 +7008,9 @@ double Master::_resources_revocable_total(const string& name)
 
   foreachvalue (Slave* slave, slaves.registered) {
     foreach (const Resource& resource, slave->totalResources.revocable()) {
-      if (resource.name() == name && resource.type() == Value::SCALAR) {
+      if (resource.name() == name && resource.type() == Value::INTEGER) {
+        total += resource.integer().value();
+      } else if (resource.name() == name && resource.type() == Value::SCALAR) {
         total += resource.scalar().value();
       }
     }
@@ -7020,7 +7027,10 @@ double Master::_resources_revocable_used(const string& name)
   foreachvalue (Slave* slave, slaves.registered) {
     foreachvalue (const Resources& resources, slave->usedResources) {
       foreach (const Resource& resource, resources.revocable()) {
-        if (resource.name() == name && resource.type() == Value::SCALAR) {
+        if (resource.name() == name && resource.type() == Value::INTEGER) {
+          used += resource.integer().value();
+        } else if (resource.name() == name &&
+                   resource.type() == Value::SCALAR) {
           used += resource.scalar().value();
         }
       }

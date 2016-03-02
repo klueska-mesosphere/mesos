@@ -38,6 +38,14 @@ namespace tests {
 
 TEST(ValuesTest, ValidInput)
 {
+  // TODO(klueska): Test parsing integer type. Unfortunately, parse()
+  // currently has no way to disambiguate between a scalar type and an
+  // integer and will alway return a SCALAR.
+  // Try<Value> result1 = parse("100");
+  // ASSERT_SOME(result1);
+  // ASSERT_EQ(Value::INTEGER, result1.get().type());
+  // EXPECT_FLOAT_EQ(100, result1.get().integer().value());
+
   // Test parsing scalar type.
   Try<Value> result1 = parse("45.55");
   ASSERT_SOME(result1);

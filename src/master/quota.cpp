@@ -158,10 +158,11 @@ Option<Error> quotaInfo(const QuotaInfo& quotaInfo)
       return Error("QuotaInfo may not contain RevocableInfo");
     }
 
-    // Check that the `Resource` is scalar.
-    if (resource.type() != Value::SCALAR) {
+    // Check that the `Resource` is integer or scalar.
+    if (resource.type() != Value::INTEGER &&
+        resource.type() != Value::SCALAR) {
       return Error(
-          "QuotaInfo may not include non-scalar resources");
+          "QuotaInfo may not include non-integer or non-scalar resources");
     }
 
     // Check that the role is either unset or default.
