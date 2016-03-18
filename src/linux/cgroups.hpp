@@ -622,6 +622,96 @@ private:
 } // namespace memory {
 
 
+// Devices subsytem
+namespace devices {
+
+// A struct representing a cgroups devices whitelist entry.
+struct ListEntry
+{
+  // Parse a string from the cgroups devices whitelist into a `ListEntry`.
+  static Try<ListEntry> parse(const std::string& entry);
+
+  // A struct representing the device selector fields of a cgroups
+  // devices whitelist entry.
+  struct Selector
+  {
+    enum Type
+    {
+      ALL,
+      BLOCK,
+      CHARACTER
+    };
+
+    // The device major/minor numbers must either be "*" or a `dev_t`
+    // type. We use an Option<dev_t> to represent this. A value of
+    // None() implies 'all' or '*'.
+    Type type;
+    Option<dev_t> major;
+    Option<dev_t> minor;
+  };
+
+  // A struct representing the access permissions of a cgroups devices
+  // whitelist entry.
+  struct Access
+  {
+    bool read;
+    bool write;
+    bool mknod;
+  };
+
+  Selector selector;
+  Access access;
+};
+
+// Stringify a `Device`, `Selector`, and `Access` for inclusion in a
+// cgroups devices whitelist.
+std::ostream& operator<<(
+    std::ostream& stream,
+    const ListEntry::Selector& selector);
+
+std::ostream& operator<<(
+    std::ostream& stream,
+    const ListEntry::Access& access);
+
+std::ostream& operator<<(
+    std::ostream& stream,
+    const ListEntry& listEntry);
+
+// Compare a `ListEntry`, `Selector`, or `Access` to another.
+bool operator==(
+    const ListEntry::Selector& left,
+    const ListEntry::Selector& right);
+
+bool operator==(
+    const ListEntry::Access& left,
+    const ListEntry::Access& right);
+
+bool operator==(
+    const ListEntry& left,
+    const ListEntry& right);
+
+// Grab a list of all devices from the cgroups devices whitelist.
+Try<std::vector<ListEntry>> list(
+    const std::string& hierarchy,
+    const std::string& cgroup);
+
+// Allow a particular device inside a particular cgroup by writing the
+// device entry in the whitelist of that cgroup.
+Try<Nothing> allow(
+    const std::string& hierarchy,
+    const std::string& cgroup,
+    const ListEntry& ListEntry);
+
+// Deny a particular device inside a particular cgroup by removing the
+// device entry from the whitelist of that cgroup.
+Try<Nothing> deny(
+    const std::string& hierarchy,
+    const std::string& cgroup,
+    const ListEntry& ListEntry);
+
+} // namespace devices {
+
+
 // Freezer controls.
 // The freezer can be in one of three states:
 // 1. THAWED   : No process in the cgroup is frozen.
