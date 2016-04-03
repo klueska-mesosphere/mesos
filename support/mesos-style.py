@@ -4,6 +4,7 @@
 
 import os
 import re
+import string
 import subprocess
 import sys
 
@@ -30,23 +31,6 @@ def find_candidates(root_dir):
 
             if source_criteria_regex.search(name) is not None:
                 yield path
-
-def run_ascii(source_paths):
-    '''
-    Runs ascii check over given files.
-    '''
-    total_errors=0
-    for source_path in source_paths:
-        with open(source_path) as p:
-            ln=1
-            for line in p:
-                m=re.match(r'[\x80-\xFF]', line)
-                if m:
-                    sys.stderr.write("Non ascii character found in "+source_path+"(Ln: "+str(ln)+", Pos: "+str(m.start()+1)+") : "+line)
-                    total_errors+=1
-                ln+=1
-
-    return total_errors
 
 def run_lint(source_paths):
     '''
@@ -111,6 +95,34 @@ def check_license_header(source_paths):
 
     return error_count
 
+def check_encoding(source_paths):
+    '''
+    Checks for encoding errors in the given files.
+    All files must contain only printable ascii characters.
+    This excludes the extended ascii characters 128-255.
+    http://www.asciitable.com/
+    '''
+    error_count = 0
+    for path in source_paths:
+        with open(path) as source_file:
+            for line_number, line in enumerate(source_file):
+                # If we find an error, add 1 to both the character and
+                # the line offset to give them 1-based indexing
+                # instead of 0 (as is common in most editors).
+                char_errors = [offset + 1 for offset, char in enumerate(line)
+                                   if char not in string.printable]
+                if char_errors:
+                    sys.stderr.write(
+                        "Non printable characters found in {path} "
+                        "(Line: {line_number}, Chars: {chars}): {line}".format(
+                            path=path,
+                            line_number=line_number + 1,
+                            chars=char_errors,
+                            line=line))
+                    error_count += 1
+
+    return error_count
+
 
 if __name__ == '__main__':
     # Verify that source roots are accessible from current working directory.
@@ -143,9 +155,9 @@ if __name__ == '__main__':
         print 'Checking {num_files} files'.\
                 format(num_files=len(filtered_candidates_set))
         license_errors = check_license_header(filtered_candidates_set)
+        encoding_errors = check_encoding(list(filtered_candidates_set))
         lint_errors = run_lint(list(filtered_candidates_set))
-        ascii_errors = run_ascii(list(filtered_candidates_set))
-        total_errors = license_errors + lint_errors + ascii_errors
+        total_errors = license_errors + encoding_errors + lint_errors
         sys.stderr.write('Total errors found: {num_errors}\n'.\
                             format(num_errors=total_errors))
         sys.exit(total_errors)
