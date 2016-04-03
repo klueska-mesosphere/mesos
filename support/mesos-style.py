@@ -31,6 +31,23 @@ def find_candidates(root_dir):
             if source_criteria_regex.search(name) is not None:
                 yield path
 
+def run_ascii(source_paths):
+    '''
+    Runs ascii check over given files.
+    '''
+    total_errors=0
+    for source_path in source_paths:
+        with open(source_path) as p:
+            ln=1
+            for line in p:
+                m=re.match(r'[\x80-\xFF]', line)
+                if m:
+                    sys.stderr.write("Non ascii character found in "+source_path+"(Ln: "+str(ln)+", Pos: "+str(m.start()+1)+") : "+line)
+                    total_errors+=1
+                ln+=1
+
+    return total_errors
+
 def run_lint(source_paths):
     '''
     Runs cpplint over given files.
@@ -127,7 +144,8 @@ if __name__ == '__main__':
                 format(num_files=len(filtered_candidates_set))
         license_errors = check_license_header(filtered_candidates_set)
         lint_errors = run_lint(list(filtered_candidates_set))
-        total_errors = license_errors + lint_errors
+        ascii_errors = run_ascii(list(filtered_candidates_set))
+        total_errors = license_errors + lint_errors + ascii_errors
         sys.stderr.write('Total errors found: {num_errors}\n'.\
                             format(num_errors=total_errors))
         sys.exit(total_errors)
