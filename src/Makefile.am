@@ -218,6 +218,7 @@ OVERSUBSCRIPTION_PROTO = $(top_srcdir)/include/mesos/slave/oversubscription.prot
 URI_PROTO = $(top_srcdir)/include/mesos/uri/uri.proto
 V1_EXECUTOR_PROTO = $(top_srcdir)/include/mesos/v1/executor/executor.proto
 V1_MESOS_PROTO = $(top_srcdir)/include/mesos/v1/mesos.proto
+V1_OPERATOR_PROTO = $(top_srcdir)/include/mesos/v1/operator/operator.proto
 V1_SCHEDULER_PROTO = $(top_srcdir)/include/mesos/v1/scheduler/scheduler.proto
 
 
@@ -266,6 +267,8 @@ CXX_PROTOS =								\
   ../include/mesos/v1/mesos.pb.h					\
   ../include/mesos/v1/executor/executor.pb.cc				\
   ../include/mesos/v1/executor/executor.pb.h				\
+  ../include/mesos/v1/operator/operator.pb.cc				\
+  ../include/mesos/v1/operator/operator.pb.h				\
   ../include/mesos/v1/scheduler/scheduler.pb.cc				\
   ../include/mesos/v1/scheduler/scheduler.pb.h
 
@@ -301,11 +304,13 @@ PYTHON_PROTOS =								\
 
 V1_JAVA_PROTOS =							\
   java/generated/org/apache/mesos/v1/Protos.java			\
-  java/generated/org/apache/mesos/v1/scheduler/Protos.java
+  java/generated/org/apache/mesos/v1/scheduler/Protos.java		\
+  java/generated/org/apache/mesos/v1/operator/Protos.java
 
 V1_PYTHON_PROTOS =							\
   python/interface/src/mesos/v1/interface/mesos_pb2.py			\
-  python/interface/src/mesos/v1/interface/scheduler_pb2.py
+  python/interface/src/mesos/v1/interface/scheduler_pb2.py              \
+  python/interface/src/mesos/v1/interface/operator_pb2.py
 
 
 BUILT_SOURCES +=							\
@@ -364,6 +369,10 @@ java/generated/org/apache/mesos/v1/Protos.java: $(V1_MESOS_PROTO)
 	$(MKDIR_P) $(@D)
 	$(PROTOC) $(PROTOCFLAGS) --java_out=java/generated $^
 
+java/generated/org/apache/mesos/v1/scheduler/Protos.java: $(V1_OPERATOR_PROTO)
+	$(MKDIR_P) $(@D)
+	$(PROTOC) $(PROTOCFLAGS) --java_out=java/generated $^
+
 java/generated/org/apache/mesos/v1/scheduler/Protos.java: $(V1_SCHEDULER_PROTO)
 	$(MKDIR_P) $(@D)
 	$(PROTOC) $(PROTOCFLAGS) --java_out=java/generated $^
@@ -407,6 +416,12 @@ python/interface/src/mesos/v1/interface/mesos_pb2.py: $(V1_MESOS_PROTO)
 	$(MKDIR_P) $(@D)
 	$(PROTOC) -I$(top_srcdir)/include/mesos/v1 $(PROTOCFLAGS)		\
 		--python_out=python/interface/src/mesos/v1/interface $^
+
+python/interface/src/mesos/v1/interface/operator_pb2.py: $(V1_OPERATOR_PROTO)
+	$(MKDIR_P) $(@D)
+	$(PROTOC) -I$(top_srcdir)/include/mesos/v1/operator $(PROTOCFLAGS)	\
+		--python_out=python/interface/src/mesos/v1/interface $^
+	$(SED) -i.bak 's/mesos\.mesos_pb2/mesos_pb2/' $@ && rm $@.bak
 
 python/interface/src/mesos/v1/interface/scheduler_pb2.py: $(V1_SCHEDULER_PROTO)
 	$(MKDIR_P) $(@D)
@@ -620,6 +635,7 @@ v1_HEADERS =								\
   $(top_srcdir)/include/mesos/v1/executor.hpp				\
   $(top_srcdir)/include/mesos/v1/mesos.hpp				\
   $(top_srcdir)/include/mesos/v1/mesos.proto				\
+  $(top_srcdir)/include/mesos/v1/operator.hpp				\
   $(top_srcdir)/include/mesos/v1/resources.hpp				\
   $(top_srcdir)/include/mesos/v1/scheduler.hpp				\
   $(top_srcdir)/include/mesos/v1/values.hpp
@@ -635,6 +651,15 @@ v1executor_HEADERS =							\
 
 nodist_v1executor_HEADERS =						\
   ../include/mesos/v1/executor/executor.pb.h
+
+v1operatordir = $(pkgincludedir)/v1/operator
+
+v1operator_HEADERS =							\
+  $(top_srcdir)/include/mesos/v1/operator/operator.hpp			\
+  $(top_srcdir)/include/mesos/v1/operator/operator.proto
+
+nodist_v1operator_HEADERS =						\
+  ../include/mesos/v1/operator/operator.pb.h
 
 v1schedulerdir = $(pkgincludedir)/v1/scheduler
 
@@ -1172,6 +1197,7 @@ libmesos_la_SOURCES =							\
   $(URI_PROTO)								\
   $(V1_EXECUTOR_PROTO)							\
   $(V1_MESOS_PROTO)							\
+  $(V1_OPERATOR_PROTO)							\
   $(V1_SCHEDULER_PROTO)
 
 libmesos_la_LDFLAGS = -release $(PACKAGE_VERSION)
@@ -1461,6 +1487,7 @@ libjava_la_DEPENDENCIES =						\
   $(MESOS_PROTO)							\
   $(V1_EXECUTOR_PROTO)							\
   $(V1_MESOS_PROTO)							\
+  $(V1_OPERATOR_PROTO)							\
   $(V1_SCHEDULER_PROTO)
 
 # We don't add libjava.la to libmesos_no_3rdparty.la so we don't

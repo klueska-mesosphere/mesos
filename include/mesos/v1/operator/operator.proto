@@ -1,0 +1,354 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+import "mesos/v1/mesos.proto";
+
+package mesos.v1.admin;
+
+option java_package = "org.apache.mesos.v1.operator";
+option java_outer_classname = "Protos";
+
+
+/**
+ * Requests in the v1 Operator API.
+ *
+ * A request is described using the standard protocol buffer "union"
+ * trick, see https://developers.google.com/protocol-buffers/docs/techniques#union.
+ */
+message Request {
+  // This message represents all possible requests that can be made
+  // against the v1 operator API. Each request is a combination of
+  // VERB + NOUN to describe the type of operation that should be
+  // performed as well as what resource that operation should be
+  // performed on.
+  enum Type {
+    // This must be the first enum value in this list, to
+    // ensure that if 'type' is not set, the default value
+    // is UNKNOWN. This enables enum values to be added
+    // in a backwards-compatible way. See: MESOS-4997.
+    UNKNOWN = 0;
+
+    // Common Requests that can be made
+    // to either a master or an agent.
+    CHECK_HEALTH = 1;
+    GET_FLAGS = 2;
+    GET_VERSION = 3;
+    GET_METRICS = 4;
+    GET_STATE = 5;
+
+    START_LOGGING = 6;
+    STOP_LOGGING = 7;
+
+    LIST_FILES = 8;
+    READ_FILE = 9;
+    GET_FILE_DEBUG_INFO = 10;
+
+    START_PROFILER = 11;
+    STOP_PROFILER = 12;
+
+    // Agent only Requests
+    GET_RESOURCE_USAGE = 1000;
+
+    // Master only Requests
+    GET_NODES = 2000;
+    GET_AGENTS = 2001;
+    GET_FRAMEWORKS = 2002;
+    GET_TASKS = 2003;
+
+    REDIRECT_TO_LEADER = 2004;
+
+    TEARDOWN_FRAMEWORK = 2005;
+
+    GET_ROLES = 2006;
+    UPDATE_ROLES = 2007;
+
+    RESERVE_RESOURCES = 2008;
+    UNRESERVE_RESOURCES = 2009;
+
+    CREATE_VOLUMES = 2010;
+    DESTROY_VOLUMES = 2011;
+
+    POWERUP_NODE = 2012;
+    POWERDOWN_NODE = 2013;
+
+    GET_MAINTENANCE_STATUS = 2014;
+    GET_MAINTENANCE_SCHEDULE = 2015;
+    UPDATE_MAINTENANCE_SCHEDULE = 2016;
+
+    GET_QUOTA = 2017;
+    SET_QUOTA = 2018;
+    REMOVE_QUOTA = 2019;
+
+    OPEN_EVENT_STREAM = 2020; // Not yet supported.
+  }
+
+  // In the v1 Operator API, all requests are made via the HTTP POST
+  // Method. As such, any request-specific parameters that need to be
+  // be attached to the request are sent in the POST request body. The
+  // messages below represent these request bodies.
+  //
+  // NOTE: Not all requests have a request body (only those that wish
+  // to pass parameters along with the request need to have one).
+  message GetMetrics {
+    optional string timeout = 1;
+  }
+
+  message GetState {
+    optional bool summary = 1;
+  }
+
+  message ListFiles {
+    required string path = 1;
+  }
+
+  message DownloadFile {
+    required string path = 1;
+  }
+
+  message ReadFile {
+    required string path = 1;
+    optional string offset = 2;
+    optional string length = 3;
+  }
+
+  message OpenEventStream {
+    // Not yet supported.
+    //
+    // TODO(klueska): Consider putting filters in here to describe the
+    // type of events we care about receiving on this open stream.
+  }
+
+  message GetTasks {
+    optional string limit = 1;
+    optional uint32 offset = 2;
+    optional string order = 3;
+  }
+
+  message UpdateRoles {
+    // Need to fill this in...
+  }
+
+  message ReserveResources {
+    required mesos.v1.AgentID agent_id = 1;
+    repeated mesos.v1.Resource resources = 2;
+  }
+
+  message UnreserveResources {
+    required mesos.v1.AgentID agent_id = 1;
+    repeated mesos.v1.Resource resources = 2;
+  }
+
+  message TeardownFramework {
+    required mesos.v1.FrameworkID framework_id = 1;
+  }
+
+  message PowerupNode {
+    // Need to fill this in...
+  }
+
+  message PowerdownNode {
+    // Need to fill this in...
+  }
+
+  message UpdateMaintenanceSchedule {
+    // Need to fill this in...
+  }
+
+  // The type of request being made.
+  // We use the value of this field to dispatch to the appropriate
+  // handler in our server-side code. If the request contains a
+  // request body, this field also indicated which optional field
+  // below should be used to represent the request body.
+  optional Type type = 1;
+
+  // Request bodies for common requests
+  // to either a master or an agent.
+  optional GetMetrics get_metrics = 2;
+  optional GetState get_state = 3;
+  optional ListFiles get_files = 4;
+  optional ReadFile read_file = 5;
+
+  // Agent only request bodies
+  // None yet -- start at 1001 when adding new ones.
+
+  // Master only request bodies
+  optional GetTasks get_tasks = 2000;
+  optional UpdateRoles update_roles = 2001;
+  optional ReserveResources reserve_resources = 2002;
+  optional UnreserveResources unreserve_resources = 2003;
+  optional TeardownFramework teardown_framework = 2004;
+  optional PowerupNode powerup_node = 2005;
+  optional PowerdownNode powerdown_node = 2006;
+  optional UpdateMaintenanceSchedule update_maintenance_schedule = 2007;
+  optional OpenEventStream open_event_stream = 2008; // Not yet supported
+}
+
+
+/**
+ * Responses in the v1 Operator API.
+ *
+ * A response is described using the standard protocol buffer "union"
+ * trick, see https://developers.google.com/protocol-buffers/docs/techniques#union.
+ */
+message Response {
+  // This message represents all of the immediate responses that are
+  // be sent back using the v1 Operator API. However, this message does
+  // not encapsulate messages sent over an Event stream. Once we
+  // support the OPEN_EVENT_STREAM request, we will have to define a
+  // separate Event message to send responses back over an event stream.
+  enum Type {
+    // This must be the first enum value in this list, to
+    // ensure that if 'type' is not set, the default value
+    // is UNKNOWN. This enables enum values to be added
+    // in a backwards-compatible way. See: MESOS-4997.
+    UNKNOWN = 0;
+
+    // Return an error message
+    // along with any 4xx responses.
+    ERROR = 1;
+
+    FLAGS = 2;
+    VERSION_INFO = 3;
+    METRICS = 4;
+    MASTER_STATE = 5;
+    AGENT_STATE = 6;
+
+    FILES = 7;
+    FILE_CONTENTS = 8;
+    FILE_DEBUG_INFO = 9;
+
+    NODES = 10;
+    AGENTS = 11;
+    FRAMEWORKS = 12;
+    TASKS = 13;
+    ROLES = 14;
+    QUOTA = 15;
+    RESOURCE_USAGE = 16;
+    PROFILER_OUTPUT = 17;
+    MAINTENANCE_STATUS = 18;
+  }
+
+  message Error {
+    required uint32 reason = 1;
+    required string text = 2;
+  }
+
+  message Flag {
+    required string key = 1;
+    required string value = 2;
+  }
+
+  message Metrics {
+    message Metric {
+      required string key = 1;
+      required double value = 2;
+    }
+
+    repeated Metric gauges = 1;
+    repeated Metric counters = 2;
+  }
+
+  message MasterState {
+    // Fill in the fields.
+  }
+
+  message AgentState {
+    // Fill in the fields.
+  }
+
+  message FileDebugInfo {
+    // Fill in the fields.
+  }
+
+  message Node {
+    // Fill in the fields.
+  }
+
+  message Agent {
+    required mesos.v1.AgentID id = 1;
+    // Add more fields...
+  }
+
+  message Framework {
+    required mesos.v1.FrameworkID id = 1;
+    // Add more fields...
+  }
+
+  message Task {
+    required mesos.v1.TaskID id = 1;
+    // Add more fields...
+  }
+
+  message Role {
+    // Fill in the fields.
+  }
+
+  message Quota {
+    // Fill in the fields.
+  }
+
+  message ResourceUsage {
+    // Fill in the fields.
+  }
+
+  message MaintenanceStatus {
+    // Fill in the fields.
+  }
+
+  // The type of response being sent back.
+  // We use the value of this field to dispatch to the appropriate
+  // handler in our client-side code.
+  optional Type type = 1;
+
+  optional Error error = 2;
+
+  repeated Flag flags = 3;
+  optional string version_info = 4;
+  optional Metrics metrics = 5;
+  optional MasterState master_state = 6;
+  optional AgentState agent_state = 7;
+  repeated string files = 8;
+  optional bytes file_contents = 9;
+  optional FileDebugInfo file_debug_info = 10;
+  repeated Node nodes = 11;
+  repeated Agent agents = 12;
+  repeated Framework frameworks = 13;
+  repeated Task tasks = 14;
+  repeated Role roles = 15;
+  optional ResourceUsage resource_usage = 16;
+  optional string profiler_output = 17;
+  optional MaintenanceStatus maintenance_status = 18;
+}
+
+// Not supported yet
+message Event {
+  // All possible events that can be streamed back on an open event
+  // stream by v1 operator API. Streams are opened by a request of
+  // type OPEN_EVENT_STREAM and events are sent back over the open
+  // stream.
+  enum Type {
+    // This must be the first enum value in this list, to
+    // ensure that if 'type' is not set, the default value
+    // is UNKNOWN. This enables enum values to be added
+    // in a backwards-compatible way. See: MESOS-4997.
+    UNKNOWN = 0;
+  }
+
+  // The type of event being sent back.
+  // We use the value of this field to dispatch to the appropriate
+  // handler in our client-side code.
+  optional Type type = 1;
+}
