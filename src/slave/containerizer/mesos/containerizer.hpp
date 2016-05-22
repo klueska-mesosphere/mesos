@@ -69,6 +69,8 @@ public:
 
   virtual ~MesosContainerizer();
 
+  virtual process::Future<Resources> resources(const Flags& flags);
+
   virtual process::Future<Nothing> recover(
       const Option<state::SlaveState>& state);
 
@@ -134,6 +136,8 @@ public:
       isolators(_isolators) {}
 
   virtual ~MesosContainerizerProcess() {}
+
+  virtual process::Future<Resources> resources(const Flags& flags);
 
   virtual process::Future<Nothing> recover(
       const Option<state::SlaveState>& state);

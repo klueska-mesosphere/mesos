@@ -61,15 +61,22 @@ public:
       bool local,
       Fetcher* fetcher);
 
-  // Determine slave resources from flags, probing the system or
-  // querying a delegate.
-  // TODO(idownes): Consider making this non-static and moving to
-  // containerizer implementations to enable a containerizer to best
-  // determine the resources, particularly if containerizeration is
-  // delegated.
-  static Try<Resources> resources(const Flags& flags);
+  // Enumerate a set of default agent resources by reading flags and
+  // probing the system. This is provided as a convenience function
+  // for implementing the virtual `resources()` function used to
+  // enumerate all resources managed by a containerizer.
+  static Try<Resources> defaultResources(const Flags& flags);
 
   virtual ~Containerizer() {}
+
+  // Enumerate all resources managed by a containerizer. This includes
+  // reading flags, probing the system, and delegating to isolators
+  // when appropriate. By default, we just enumerate the resources
+  // using the static function defined above.
+  virtual process::Future<Resources> resources(const Flags& flags)
+  {
+    return Containerizer::defaultResources(flags);
+  }
 
   // Recover all containerized executors specified in state. Any
   // containerized executors present on the system but not included in

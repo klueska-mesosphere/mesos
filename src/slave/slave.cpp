@@ -473,10 +473,14 @@ void Slave::initialize()
   CHECK_SOME(os::mkdir(flags.work_dir))
     << "Failed to create agent work directory '" << flags.work_dir << "'";
 
-  Try<Resources> resources = Containerizer::resources(flags);
-  if (resources.isError()) {
+  // Get the resources from the containerizer. Since this
+  // is a one time initialization, it is OK to serialize
+  // here on the resources being ready.
+  Future<Resources> resources = containerizer->resources(flags);
+  resources.await();
+  if (resources.isFailed()) {
     EXIT(EXIT_FAILURE)
-      << "Failed to determine agent resources: " << resources.error();
+      << "Failed to determine agent resources: " << resources.failure();
   }
 
   // Ensure disk `source`s are accessible.

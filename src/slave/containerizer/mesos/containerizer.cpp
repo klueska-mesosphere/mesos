@@ -14,6 +14,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <list>
+#include <map>
+#include <string>
+#include <vector>
+
 #include <mesos/module/isolator.hpp>
 
 #include <mesos/slave/container_logger.hpp>
@@ -31,6 +36,7 @@
 #include <stout/adaptor.hpp>
 #include <stout/foreach.hpp>
 #include <stout/fs.hpp>
+#include <stout/hashmap.hpp>
 #include <stout/lambda.hpp>
 #include <stout/os.hpp>
 #include <stout/path.hpp>
@@ -333,6 +339,14 @@ MesosContainerizer::~MesosContainerizer()
 }
 
 
+Future<Resources> MesosContainerizer::resources(const Flags& flags)
+{
+  return dispatch(
+      process.get(),
+      &MesosContainerizerProcess::resources,
+      flags);
+}
+
 Future<Nothing> MesosContainerizer::recover(
     const Option<state::SlaveState>& state)
 {
@@ -435,6 +449,59 @@ void MesosContainerizer::destroy(const ContainerID& containerId)
 Future<hashset<ContainerID>> MesosContainerizer::containers()
 {
   return dispatch(process.get(), &MesosContainerizerProcess::containers);
+}
+
+
+// Enumerate all resources for this containerizer. Resource
+// enumeration is delegated to each individual isolator and combined
+// with the default resource enumeration provided by the static
+// function `Containerizer::defaultResources()`. Only one isolator
+// should ever be responsible for enumerating a particular resource.
+// If two isolators enumerate the same resource, it is an error.  If
+// no isolators enumerate a particular resource, fall back to the
+// default enumeration.
+Future<Resources> MesosContainerizerProcess::resources(const Flags& flags)
+{
+  list<Future<Resources>> futures;
+  foreach (const Owned<Isolator>& isolator, isolators) {
+    futures.push_back(isolator->resources());
+  }
+
+  return collect(futures)
+    .then([flags] (const list<Resources>& resources) -> Future<Resources> {
+      // Loop through the enumerated isolator resources and build a
+      // new resource vector combining resources from each isolator.
+      // If two isolators enumerate the same resource, return an error.
+      Resources combinedResources;
+      foreach (const Resources& isolatorResources, resources) {
+        foreach (const string& name, isolatorResources.names()) {
+          if (combinedResources.names().count(name) != 0) {
+            return Failure("Failed to enumerate resources: multiple isolators"
+                           " enumerate the '" + name + "' resource");
+          }
+        }
+        combinedResources += isolatorResources;
+      }
+
+      // Get the set of default resources enumerated by the containerizer.
+      Try<Resources> defaultResources = Containerizer::defaultResources(flags);
+      if (defaultResources.isError()) {
+        return Failure(defaultResources.error());
+      }
+
+      // Build the union of combined isolator resources and default
+      // resources (with isolator resources taking precedence).
+      foreach (const string& name, defaultResources->names()) {
+        if (combinedResources.names().count(name) == 0) {
+          combinedResources += defaultResources->filter(
+              [&name](const Resource& resource) {
+                return resource.name() == name;
+              });
+        }
+      }
+
+      return combinedResources;
+    });
 }
 
 

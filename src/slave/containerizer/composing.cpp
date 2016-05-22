@@ -52,6 +52,8 @@ public:
 
   virtual ~ComposingContainerizerProcess();
 
+  Future<Resources> resources(const Flags& flags);
+
   Future<Nothing> recover(
       const Option<state::SlaveState>& state);
 
@@ -152,6 +154,12 @@ ComposingContainerizer::~ComposingContainerizer()
   terminate(process);
   process::wait(process);
   delete process;
+}
+
+
+Future<Resources> ComposingContainerizer::resources(const Flags& flags)
+{
+  return dispatch(process, &ComposingContainerizerProcess::resources, flags);
 }
 
 
@@ -262,6 +270,48 @@ ComposingContainerizerProcess::~ComposingContainerizerProcess()
 
   containerizers_.clear();
   containers_.clear();
+}
+
+
+// Collect the resources enumerated by each containerizer and compose
+// them. Composition occurs by taking the union of all resources
+// enumerated by each containerizer. If two containerizers enumerate
+// the same resource, they must enumerate it in *exactly* the same
+// way, otherwise an error is returned.
+Future<Resources> ComposingContainerizerProcess::resources(const Flags& flags)
+{
+  list<Future<Resources>> futures;
+  foreach (Containerizer* containerizer, containerizers_) {
+    futures.push_back(containerizer->resources(flags));
+  }
+
+  return collect(futures)
+    .then([] (const list<Resources>& resources) -> Future<Resources> {
+      Resources combinedResources;
+      foreach (const Resources& containerizerResources, resources) {
+        foreach (const string& name, containerizerResources.names()) {
+          Resources filteredContainerizerResources =
+            containerizerResources.filter([&name](const Resource& resource) {
+                  return resource.name() == name;
+                });
+          Resources filteredCombinedResources =
+            combinedResources.filter([&name](const Resource& resource) {
+                  return resource.name() == name;
+                });
+
+          if (combinedResources.names().count(name) != 0 &&
+              filteredContainerizerResources != filteredCombinedResources) {
+            return Failure("Failed to enumerate resources: multiple"
+                           " containerizers enumerate the '" + name + "'"
+                           " resource differently");
+          } else {
+            combinedResources += filteredContainerizerResources;
+          }
+        }
+      }
+
+      return combinedResources;
+    });
 }
 
 

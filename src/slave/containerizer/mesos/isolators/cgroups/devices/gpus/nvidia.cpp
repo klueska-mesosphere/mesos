@@ -223,6 +223,52 @@ Try<Isolator*> CgroupsNvidiaGpuIsolatorProcess::create(const Flags& flags)
 }
 
 
+Future<Resources> CgroupsNvidiaGpuIsolatorProcess::resources()
+{
+  Try<Resources> parsed = Resources::parse(
+      flags.resources.getOrElse(""), flags.default_role);
+
+  if (parsed.isError()) {
+    return Failure(parsed.error());
+  }
+
+  Resources resources = parsed.get();
+
+  // GPU resource.
+  // We currently do not support GPU discovery, so we require that
+  // GPUs are explicitly specified in `--resources`. When Nvidia GPU
+  // support is enabled, we also require the GPU devices to be
+  // specified in `--nvidia_gpu_devices`.
+  if (strings::contains(flags.resources.getOrElse(""), "gpus")) {
+    // Make sure that the value of `gpus` is actually an integer and
+    // not a fractional amount. We take advantage of the fact that we
+    // know the value of `gpus` is only precise up to 3 decimals.
+    long long millis = static_cast<long long>(resources.gpus().get() * 1000);
+    if ((millis % 1000) != 0) {
+      return Failure("The `gpus` resource must be"
+                     " specified as an unsigned integer");
+    }
+
+    // Verify that the number of GPUs in `--nvidia_gpu_devices`
+    // matches the number of GPUs specified as a resource. In the
+    // future we will do discovery of GPUs, which will make the
+    // `--nvidia_gpu_devices` flag optional.
+    if (!flags.nvidia_gpu_devices.isSome()) {
+      return Failure("When specifying the `gpus` resource,"
+                     " you must also specify a list of GPUs"
+                     " via the `--nvidia_gpu_devices` flag");
+    }
+
+    if (flags.nvidia_gpu_devices->size() != resources.gpus().get())
+      return Failure("The number of GPUs passed in the"
+                     " '--nvidia_gpu_devices' flag must"
+                     " match the number of GPUs specified"
+                     " in the 'gpus' resource");
+  }
+  return resources;
+}
+
+
 Future<Nothing> CgroupsNvidiaGpuIsolatorProcess::recover(
     const list<ContainerState>& states,
     const hashset<ContainerID>& orphans)

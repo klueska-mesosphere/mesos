@@ -51,6 +51,8 @@ public:
 
   virtual ~ComposingContainerizer();
 
+  virtual process::Future<Resources> resources(const Flags& flags);
+
   virtual process::Future<Nothing> recover(
       const Option<state::SlaveState>& state);
 

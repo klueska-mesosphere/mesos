@@ -42,6 +42,12 @@ class Isolator
 public:
   virtual ~Isolator() {}
 
+  // Enumerate resources managed by the isolator.
+  virtual process::Future<Resources> resources()
+  {
+    return Resources();
+  }
+
   // Recover containers from the run states and the orphan containers
   // (known to the launcher but not known to the slave) detected by
   // the launcher.

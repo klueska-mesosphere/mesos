@@ -79,6 +79,8 @@ public:
 
   virtual ~CgroupsNvidiaGpuIsolatorProcess();
 
+  virtual process::Future<Resources> resources();
+
   virtual process::Future<Nothing> recover(
       const std::list<mesos::slave::ContainerState>& states,
       const hashset<ContainerID>& orphans);

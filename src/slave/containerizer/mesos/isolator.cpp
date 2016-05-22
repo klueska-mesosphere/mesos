@@ -46,6 +46,13 @@ MesosIsolator::~MesosIsolator()
 }
 
 
+Future<Resources> MesosIsolator::resources()
+{
+  return dispatch(process.get(),
+                  &MesosIsolatorProcess::resources);
+}
+
+
 Future<Nothing> MesosIsolator::recover(
     const list<ContainerState>& state,
     const hashset<ContainerID>& orphans)
