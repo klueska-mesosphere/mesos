@@ -1648,18 +1648,18 @@ TEST_F(PersistentVolumeEndpointsTest, SlavesEndpointFullResources)
           "type": "SCALAR"
         },
         {
-          "name": "mem",
-          "role": "*",
-          "scalar": {
-            "value": 1536.0
-          },
-          "type": "SCALAR"
-        },
-        {
           "name": "disk",
           "role": "*",
           "scalar": {
             "value": 3072.0
+          },
+          "type": "SCALAR"
+        },
+        {
+          "name": "mem",
+          "role": "*",
+          "scalar": {
+            "value": 1536.0
           },
           "type": "SCALAR"
         },
@@ -1680,6 +1680,14 @@ TEST_F(PersistentVolumeEndpointsTest, SlavesEndpointFullResources)
 
   ASSERT_SOME(expectedOffered);
 
+  // TODO(klueska): It's possible that the ordering of resources
+  // reported by the agent may change over time. As such, the ordering
+  // of resources in their underlying JSON representation my change as
+  // well. If this happens, the checks below will (incorrectly)
+  // trigger an error because JSON arrays are ordered, whereas
+  // resources are not. Consider updating the logic below to compare
+  // the resulting `Resources` object represented by each JSON string,
+  // not the exact JSON strings themselves.
   JSON::Value reservedValue = slaveObject.values["reserved_resources_full"];
   EXPECT_EQ(expectedReserved.get(), reservedValue);
 
