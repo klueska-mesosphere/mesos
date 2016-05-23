@@ -17,6 +17,8 @@
 
 #include <mesos/authorizer/acls.hpp>
 
+#include <mesos/resources.hpp>
+
 #include <mesos/module/module.hpp>
 
 #include <stout/error.hpp>
@@ -113,6 +115,13 @@ inline Try<hashmap<std::string, std::string>> parse(const std::string& value)
     map[key] = value.as<JSON::String>().value;
   }
   return map;
+}
+
+
+template <>
+inline Try<mesos::Resources> parse(const std::string& value)
+{
+  return mesos::Resources::parse(value);
 }
 
 

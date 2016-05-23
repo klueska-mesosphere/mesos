@@ -25,6 +25,8 @@
 #include <stout/option.hpp>
 #include <stout/path.hpp>
 
+#include <mesos/resources.hpp>
+
 #include <mesos/module/module.hpp>
 
 #include "logging/flags.hpp"
@@ -43,7 +45,7 @@ public:
   bool version;
   Option<std::string> hostname;
   bool hostname_lookup;
-  Option<std::string> resources;
+  Option<Resources> resources;
   std::string isolation;
   Option<std::string> launcher;
 
