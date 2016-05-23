@@ -125,8 +125,7 @@ private:
 
   CgroupsNvidiaGpuIsolatorProcess(
       const Flags& _flags,
-      const std::string& hierarchy,
-      std::list<Gpu> gpus);
+      const std::string& hierarchy);
 
   process::Future<Nothing> _cleanup(
       const ContainerID& containerId,

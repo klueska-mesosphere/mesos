@@ -127,11 +127,9 @@ static const char* DEFAULT_WHITELIST_ENTRIES[] = {
 
 CgroupsNvidiaGpuIsolatorProcess::CgroupsNvidiaGpuIsolatorProcess(
     const Flags& _flags,
-    const string& _hierarchy,
-    list<Gpu> gpus)
+    const string& _hierarchy)
   : flags(_flags),
-    hierarchy(_hierarchy),
-    available(gpus) {}
+    hierarchy(_hierarchy) {}
 
 
 CgroupsNvidiaGpuIsolatorProcess::~CgroupsNvidiaGpuIsolatorProcess()
@@ -145,43 +143,11 @@ CgroupsNvidiaGpuIsolatorProcess::~CgroupsNvidiaGpuIsolatorProcess()
 
 Try<Isolator*> CgroupsNvidiaGpuIsolatorProcess::create(const Flags& flags)
 {
-  // Initialize NVML.
+  // We use NVML throughout the GPU isolator. Initialize it
+  // here so that it is available in all member functions.
   nvmlReturn_t result = nvmlInit();
   if (result != NVML_SUCCESS) {
     return Error("nvmlInit failed: " +  string(nvmlErrorString(result)));
-  }
-
-  // Enumerate all available GPU devices.
-  list<Gpu> gpus;
-
-  if (flags.nvidia_gpu_devices.isSome()) {
-    foreach (unsigned int device, flags.nvidia_gpu_devices.get()) {
-      nvmlDevice_t handle;
-      result = nvmlDeviceGetHandleByIndex(device, &handle);
-
-      if (result == NVML_ERROR_INVALID_ARGUMENT) {
-        return Error("GPU device " + stringify(device) + " not found");
-      }
-      if (result != NVML_SUCCESS) {
-        return Error("nvmlDeviceGetHandleByIndex failed: " +
-                     string(nvmlErrorString(result)));
-      }
-
-      unsigned int minor;
-      result = nvmlDeviceGetMinorNumber(handle, &minor);
-
-      if (result != NVML_SUCCESS) {
-        return Error("nvmlDeviceGetMinorNumber failed: " +
-                     string(nvmlErrorString(result)));
-      }
-
-      Gpu gpu;
-      gpu.handle = handle;
-      gpu.major = NVIDIA_MAJOR_DEVICE;
-      gpu.minor = minor;
-
-      gpus.push_back(gpu);
-    }
   }
 
   // Prepare the cgroups device hierarchy.
@@ -217,7 +183,7 @@ Try<Isolator*> CgroupsNvidiaGpuIsolatorProcess::create(const Flags& flags)
   }
 
   process::Owned<MesosIsolatorProcess> process(
-      new CgroupsNvidiaGpuIsolatorProcess(flags, hierarchy.get(), gpus));
+      new CgroupsNvidiaGpuIsolatorProcess(flags, hierarchy.get()));
 
   return new MesosIsolator(process);
 }
@@ -225,6 +191,15 @@ Try<Isolator*> CgroupsNvidiaGpuIsolatorProcess::create(const Flags& flags)
 
 Future<Resources> CgroupsNvidiaGpuIsolatorProcess::resources()
 {
+  // We use a vector<int> to represent the list of GPU devices we want
+  // to make available to the agent. The integers in this list
+  // represent GPU device numbers as enumerated by NVML. There are a
+  // number of ways for us to fill in this vector (based on our
+  // command line flags), but once it is built, we use it to query the
+  // system and create our list of `available` GPUs. We then return a
+  // `gpus` resource representing the enumerated GPUs.
+  vector<unsigned int> gpus;
+
   Try<Resources> parsed = Resources::parse(
       flags.resources.getOrElse(""), flags.default_role);
 
@@ -234,38 +209,123 @@ Future<Resources> CgroupsNvidiaGpuIsolatorProcess::resources()
 
   Resources resources = parsed.get();
 
-  // GPU resource.
-  // We currently do not support GPU discovery, so we require that
-  // GPUs are explicitly specified in `--resources`. When Nvidia GPU
-  // support is enabled, we also require the GPU devices to be
-  // specified in `--nvidia_gpu_devices`.
+  // If we specify `gpus` as a resource on the command line, we need
+  // to make sure it is well formed and that its value matches with
+  // other (optional) command line parameters we pass in. We also need
+  // to make sure we have enought GPUs available in the system.
   if (strings::contains(flags.resources.getOrElse(""), "gpus")) {
-    // Make sure that the value of `gpus` is actually an integer and
-    // not a fractional amount. We take advantage of the fact that we
-    // know the value of `gpus` is only precise up to 3 decimals.
+    // Make sure the value of `gpus` is an integer and not a
+    // fractional amount. We take advantage of the fact that we know
+    // the value of `gpus` is only precise up to 3 decimals.
     long long millis = static_cast<long long>(resources.gpus().get() * 1000);
     if ((millis % 1000) != 0) {
       return Failure("The `gpus` resource must be"
                      " specified as an unsigned integer");
     }
 
-    // Verify that the number of GPUs in `--nvidia_gpu_devices`
-    // matches the number of GPUs specified as a resource. In the
-    // future we will do discovery of GPUs, which will make the
-    // `--nvidia_gpu_devices` flag optional.
-    if (!flags.nvidia_gpu_devices.isSome()) {
-      return Failure("When specifying the `gpus` resource,"
-                     " you must also specify a list of GPUs"
-                     " via the `--nvidia_gpu_devices` flag");
+    // If we specify `nvidia_gpu_devices` on the command line, then we
+    // use its value to fill in `vector<int> gpus` variable. The size
+    // of this list must match the value of the `gpus` resource,
+    // otherwise we return an error.
+    if (flags.nvidia_gpu_devices.isSome()) {
+      if (flags.nvidia_gpu_devices->size() != resources.gpus().get()) {
+        return Failure("The number of GPUs passed in the"
+                       " '--nvidia_gpu_devices' flag must"
+                       " match the number of GPUs specified"
+                       " in the 'gpus' resource");
+      }
+      gpus = flags.nvidia_gpu_devices.get();
+    } else {
+      // If there is no `nvidia_gpu_devices` flag, query NVML to
+      // verify that the number of GPUs specified is actually
+      // available. The devices to make available are then in the
+      // range [0 .. resources.gpus.get());
+      unsigned int gpuCount;
+      nvmlReturn_t result = nvmlDeviceGetCount(&gpuCount);
+      if (result != NVML_SUCCESS) {
+        return Failure("nvmlDeviceGetCount failed: " +
+                     string(nvmlErrorString(result)));
+      }
+
+      if (resources.gpus().get() > gpuCount) {
+        return Failure("The `gpus` resource flag specifies"
+                       " '" + stringify(resources.gpus().get()) + "'"
+                       " GPUs, but only '" + stringify(gpuCount) + "'"
+                       " GPUs are available on the system");
+      }
+
+      for (unsigned int i = 0; i < resources.gpus().get(); ++i) {
+        gpus.push_back(i);
+      }
+    }
+  } else {
+    // If we haven't specified a `gpus` resource on the command line,
+    // then we either infer the GPUs to enumerate directly from the
+    // `nvidia_gpu_devices` flag or we autodiscover them using NVML.
+    // If we autodiscover them, the range of devices to make available
+    // is [0 .. gpuCount].
+    if (flags.nvidia_gpu_devices.isSome()) {
+      gpus = flags.nvidia_gpu_devices.get();
+    } else {
+      unsigned int gpuCount;
+      nvmlReturn_t result = nvmlDeviceGetCount(&gpuCount);
+      if (result != NVML_SUCCESS) {
+        return Failure("nvmlDeviceGetCount failed: " +
+                     string(nvmlErrorString(result)));
+      }
+
+      for (unsigned int i = 0; i < gpuCount; ++i) {
+        gpus.push_back(i);
+      }
+    }
+  }
+
+  // Once we get here, we know we have a list of GPUs to enumerate in
+  // `vector<int> gpus`. We use this to query NVML, find the GPUs on
+  // the system and fill out our `list<Gpu> available` member variable.
+  foreach (unsigned int gpu, gpus) {
+    nvmlDevice_t handle;
+    nvmlReturn_t result = nvmlDeviceGetHandleByIndex(gpu, &handle);
+
+    if (result == NVML_ERROR_INVALID_ARGUMENT) {
+      return Failure("GPU device " + stringify(gpu) + " not found");
+    }
+    if (result != NVML_SUCCESS) {
+      return Failure("nvmlDeviceGetHandleByIndex failed: " +
+                     stringify(nvmlErrorString(result)));
     }
 
-    if (flags.nvidia_gpu_devices->size() != resources.gpus().get())
-      return Failure("The number of GPUs passed in the"
-                     " '--nvidia_gpu_devices' flag must"
-                     " match the number of GPUs specified"
-                     " in the 'gpus' resource");
+    unsigned int minor;
+    result = nvmlDeviceGetMinorNumber(handle, &minor);
+
+    if (result != NVML_SUCCESS) {
+      return Failure("nvmlDeviceGetMinorNumber failed: " +
+                     stringify(nvmlErrorString(result)));
+    }
+
+    Gpu device;
+    device.handle = handle;
+    device.major = NVIDIA_MAJOR_DEVICE;
+    device.minor = minor;
+
+    available.push_back(device);
   }
-  return resources;
+
+  // Finally, return a `Resources` object representing the GPUs we've
+  // enumerated. If we specified the `gpus` resource on the command
+  // line, we return the parsed resources exactly as they came in (to
+  // preserve roles). Otherwise we return a new `Resources` object
+  // with the default role set.
+  if (strings::contains(flags.resources.getOrElse(""), "gpus")) {
+    return resources.filter([](const Resource& resource) {
+      return resource.name() == "gpus";
+    });
+  } else {
+    return Resources::parse(
+        "gpus",
+        stringify(gpus.size()),
+        flags.default_role).get();
+  }
 }
 
 
