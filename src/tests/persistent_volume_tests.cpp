@@ -262,7 +262,7 @@ TEST_P(PersistentVolumeTest, CreateAndDestroyPersistentVolumes)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = getSlaveResources();
+  slaveFlags.resources = Resources::parse(getSlaveResources()).get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -418,7 +418,7 @@ TEST_P(PersistentVolumeTest, ResourcesCheckpointing)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = getSlaveResources();
+  slaveFlags.resources = Resources::parse(getSlaveResources()).get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -483,7 +483,7 @@ TEST_P(PersistentVolumeTest, PreparePersistentVolume)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = getSlaveResources();
+  slaveFlags.resources = Resources::parse(getSlaveResources()).get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -552,7 +552,7 @@ TEST_P(PersistentVolumeTest, MasterFailover)
   StandaloneMasterDetector detector(master.get()->pid);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = getSlaveResources();
+  slaveFlags.resources = Resources::parse(getSlaveResources()).get();
 
   Try<Owned<cluster::Slave>> slave = StartSlave(&detector, slaveFlags);
   ASSERT_SOME(slave);
@@ -642,7 +642,7 @@ TEST_P(PersistentVolumeTest, IncompatibleCheckpointedResources)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = getSlaveResources();
+  slaveFlags.resources = Resources::parse(getSlaveResources()).get();
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
   TestContainerizer containerizer(&exec);
@@ -697,7 +697,7 @@ TEST_P(PersistentVolumeTest, IncompatibleCheckpointedResources)
 
   // Change the slave resources so that it's not compatible with the
   // checkpointed resources.
-  slaveFlags.resources = "disk:1024";
+  slaveFlags.resources = Resources::parse("disk:1024").get();
 
   MockSlave slave2(slaveFlags, &detector, &containerizer);
 
@@ -731,7 +731,7 @@ TEST_P(PersistentVolumeTest, AccessPersistentVolume)
 
   slave::Flags slaveFlags = CreateSlaveFlags();
 
-  slaveFlags.resources = getSlaveResources();
+  slaveFlags.resources = Resources::parse(getSlaveResources()).get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -894,7 +894,7 @@ TEST_P(PersistentVolumeTest, SlaveRecovery)
 
   slave::Flags slaveFlags = CreateSlaveFlags();
 
-  slaveFlags.resources = getSlaveResources();
+  slaveFlags.resources = Resources::parse(getSlaveResources()).get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -1047,7 +1047,7 @@ TEST_P(PersistentVolumeTest, GoodACLCreateThenDestroy)
   // Create a slave. Resources are being statically reserved because persistent
   // volume creation requires reserved resources.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = getSlaveResources();
+  slaveFlags.resources = Resources::parse(getSlaveResources()).get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -1194,7 +1194,7 @@ TEST_P(PersistentVolumeTest, GoodACLNoPrincipal)
   // Create a slave. Resources are being statically reserved because persistent
   // volume creation requires reserved resources.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = getSlaveResources();
+  slaveFlags.resources = Resources::parse(getSlaveResources()).get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -1344,7 +1344,7 @@ TEST_P(PersistentVolumeTest, BadACLNoPrincipal)
 
   // Create a slave.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = getSlaveResources();
+  slaveFlags.resources = Resources::parse(getSlaveResources()).get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -1543,7 +1543,7 @@ TEST_P(PersistentVolumeTest, BadACLDropCreateAndDestroy)
 
   // Create a slave.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = getSlaveResources();
+  slaveFlags.resources = Resources::parse(getSlaveResources()).get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);

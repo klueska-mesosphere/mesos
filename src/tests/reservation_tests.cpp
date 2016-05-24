@@ -97,7 +97,7 @@ TEST_F(ReservationTest, ReserveThenUnreserve)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:512").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -189,7 +189,7 @@ TEST_F(ReservationTest, ReserveTwiceWithDoubleValue)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:24;mem:4096";
+  slaveFlags.resources = Resources::parse("cpus:24;mem:4096").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -294,7 +294,7 @@ TEST_F(ReservationTest, ReserveAndLaunchThenUnreserve)
   TestContainerizer containerizer(&exec);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:512").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
 
@@ -413,7 +413,7 @@ TEST_F(ReservationTest, ReserveShareWithinRole)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:512").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -523,7 +523,7 @@ TEST_F(ReservationTest, DropReserveTooLarge)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:512").get();
 
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
@@ -613,7 +613,7 @@ TEST_F(ReservationTest, DropReserveStaticReservation)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus(role):1;mem(role):512";
+  slaveFlags.resources = Resources::parse("cpus(role):1;mem(role):512").get();
 
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
@@ -699,7 +699,7 @@ TEST_F(ReservationTest, SendingCheckpointResourcesMessage)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:8;mem:4096";
+  slaveFlags.resources = Resources::parse("cpus:8;mem:4096").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -799,7 +799,7 @@ TEST_F(ReservationTest, ResourcesCheckpointing)
 
   slave::Flags slaveFlags = CreateSlaveFlags();
   slaveFlags.recover = "reconnect";
-  slaveFlags.resources = "cpus:8;mem:4096";
+  slaveFlags.resources = Resources::parse("cpus:8;mem:4096").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -888,7 +888,7 @@ TEST_F(ReservationTest, MasterFailover)
   ASSERT_SOME(master1);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:8;mem:2048";
+  slaveFlags.resources = Resources::parse("cpus:8;mem:2048").get();
 
   StandaloneMasterDetector detector(master1.get()->pid);
 
@@ -1001,7 +1001,7 @@ TEST_F(ReservationTest, CompatibleCheckpointedResources)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:8;mem:4096";
+  slaveFlags.resources = Resources::parse("cpus:8;mem:4096").get();
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
   TestContainerizer containerizer(&exec);
@@ -1063,7 +1063,7 @@ TEST_F(ReservationTest, CompatibleCheckpointedResources)
 
   // Change the slave resources so that it is compatible with the
   // checkpointed resources.
-  slaveFlags.resources = "cpus:12;mem:2048";
+  slaveFlags.resources = Resources::parse("cpus:12;mem:2048").get();
 
   MockSlave slave2(slaveFlags, &detector, &containerizer);
 
@@ -1107,7 +1107,7 @@ TEST_F(ReservationTest, CompatibleCheckpointedResourcesWithPersistentVolumes)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:8;mem:4096;disk:2048";
+  slaveFlags.resources = Resources::parse("cpus:8;mem:4096;disk:2048").get();
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
   TestContainerizer containerizer(&exec);
@@ -1189,7 +1189,7 @@ TEST_F(ReservationTest, CompatibleCheckpointedResourcesWithPersistentVolumes)
 
   // Change the slave resources so that it is compatible with the
   // checkpointed resources.
-  slaveFlags.resources = "cpus:12;mem:2048;disk:1024";
+  slaveFlags.resources = Resources::parse("cpus:12;mem:2048;disk:1024").get();
 
   MockSlave slave2(slaveFlags, &detector, &containerizer);
 
@@ -1232,7 +1232,7 @@ TEST_F(ReservationTest, IncompatibleCheckpointedResources)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:8;mem:4096";
+  slaveFlags.resources = Resources::parse("cpus:8;mem:4096").get();
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
   TestContainerizer containerizer(&exec);
@@ -1293,7 +1293,7 @@ TEST_F(ReservationTest, IncompatibleCheckpointedResources)
 
   // Change the slave resources so that it's not compatible with the
   // checkpointed resources.
-  slaveFlags.resources = "cpus:4;mem:2048";
+  slaveFlags.resources = Resources::parse("cpus:4;mem:2048").get();
 
   MockSlave slave2(slaveFlags, &detector, &containerizer);
 
@@ -1352,7 +1352,7 @@ TEST_F(ReservationTest, GoodACLReserveThenUnreserve)
 
   // Create a slave.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:512").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -1451,7 +1451,7 @@ TEST_F(ReservationTest, BadACLDropReserve)
 
   // Create a slave.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:512").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -1541,7 +1541,7 @@ TEST_F(ReservationTest, BadACLDropUnreserve)
 
   // Create a slave.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:2;mem:1024";
+  slaveFlags.resources = Resources::parse("cpus:2;mem:1024").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -1670,7 +1670,7 @@ TEST_F(ReservationTest, ACLMultipleOperations)
 
   // Create a slave.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:2;mem:1024";
+  slaveFlags.resources = Resources::parse("cpus:2;mem:1024").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
 
@@ -1859,7 +1859,7 @@ TEST_F(ReservationTest, WithoutAuthenticationWithoutPrincipal)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:512").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -1961,7 +1961,7 @@ TEST_F(ReservationTest, WithoutAuthenticationWithPrincipal)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:512").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);

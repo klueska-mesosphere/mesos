@@ -670,8 +670,8 @@ TEST_F(MasterTest, RecoverResources)
   TestContainerizer containerizer(&exec);
 
   slave::Flags flags = CreateSlaveFlags();
-  flags.resources = Option<string>(
-      "cpus:2;mem:1024;disk:1024;ports:[1-10, 20-30]");
+  flags.resources = Resources::parse(
+      "cpus:2;mem:1024;disk:1024;ports:[1-10, 20-30]").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
 
@@ -780,7 +780,7 @@ TEST_F(MasterTest, RecoverResources)
 
   AWAIT_READY(offers);
   EXPECT_NE(0u, offers.get().size());
-  Resources slaveResources = Resources::parse(flags.resources.get()).get();
+  Resources slaveResources = flags.resources.get();
   EXPECT_EQ(slaveResources, offers.get()[0].resources());
 
   driver.stop();
@@ -1225,7 +1225,7 @@ TEST_F(MasterTest, LaunchCombinedOfferTest)
   Resources fullSlave = halfSlave + halfSlave;
 
   slave::Flags flags = CreateSlaveFlags();
-  flags.resources = Option<string>(stringify(fullSlave));
+  flags.resources = fullSlave;
 
   Owned<MasterDetector> detector = master.get()->createDetector();
 
@@ -1370,7 +1370,7 @@ TEST_F(MasterTest, LaunchAcrossSlavesTest)
   Resources twoSlaves = fullSlave + fullSlave;
 
   slave::Flags flags = CreateSlaveFlags();
-  flags.resources = Option<string>(stringify(fullSlave));
+  flags.resources = fullSlave;
 
   Owned<MasterDetector> detector = master.get()->createDetector();
 
@@ -1404,7 +1404,7 @@ TEST_F(MasterTest, LaunchAcrossSlavesTest)
 
   // Create new Flags as we require another work_dir for checkpoints.
   slave::Flags flags2 = CreateSlaveFlags();
-  flags2.resources = Option<string>(stringify(fullSlave));
+  flags2.resources = fullSlave;
 
   Try<Owned<cluster::Slave>> slave2 =
     StartSlave(detector.get(), &containerizer, flags2);
@@ -1477,7 +1477,7 @@ TEST_F(MasterTest, LaunchDuplicateOfferTest)
   Resources fullSlave = Resources::parse("cpus:2;mem:1024").get();
 
   slave::Flags flags = CreateSlaveFlags();
-  flags.resources = Option<string>(stringify(fullSlave));
+  flags.resources = fullSlave;
 
   Owned<MasterDetector> detector = master.get()->createDetector();
 
@@ -2476,7 +2476,7 @@ TEST_F(MasterTest, IgnoreEphemeralPortsResource)
     resourcesWithoutEphemeralPorts + ";ephemeral_ports:[30001-30999]";
 
   slave::Flags flags = CreateSlaveFlags();
-  flags.resources = resourcesWithEphemeralPorts;
+  flags.resources = Resources::parse(resourcesWithEphemeralPorts).get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), flags);
@@ -2739,7 +2739,7 @@ TEST_F(MasterTest, UnacknowledgedTerminalTask)
   TestContainerizer containerizer(&exec);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:64";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:64").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
 
@@ -2819,7 +2819,7 @@ TEST_F(MasterTest, ReleaseResourcesForTerminalTaskWithPendingUpdates)
   TestContainerizer containerizer(&exec);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:64";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:64").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave =
@@ -3864,7 +3864,7 @@ TEST_F(MasterTest, MasterFailoverLongLivedExecutor)
   Resources fullSlave = halfSlave + halfSlave;
 
   slave::Flags flags = CreateSlaveFlags();
-  flags.resources = Option<string>(stringify(fullSlave));
+  flags.resources = fullSlave;
 
   StandaloneMasterDetector detector(master.get()->pid);
 

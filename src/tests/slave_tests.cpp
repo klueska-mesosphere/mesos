@@ -1288,7 +1288,8 @@ TEST_F(SlaveTest, StateEndpoint)
   slave::Flags flags = this->CreateSlaveFlags();
 
   flags.hostname = "localhost";
-  flags.resources = "cpus:4;mem:2048;disk:512;ports:[33000-34000]";
+  flags.resources = Resources::parse(
+      "cpus:4;mem:2048;disk:512;ports:[33000-34000]").get();
   flags.attributes = "rack:abc;host:myhost";
 
   MockExecutor exec(DEFAULT_EXECUTOR_ID);
@@ -1355,7 +1356,7 @@ TEST_F(SlaveTest, StateEndpoint)
   EXPECT_EQ(flags.hostname.get(), state.values["hostname"]);
 
   Try<Resources> resources = Resources::parse(
-      flags.resources.get(), flags.default_role);
+      stringify(flags.resources.get()), flags.default_role);
 
   ASSERT_SOME(resources);
 
@@ -3555,7 +3556,8 @@ TEST_F(SlaveTest, TotalSlaveResourcesIncludedInUsage)
   StandaloneMasterDetector detector(master.get()->pid);
 
   slave::Flags flags = CreateSlaveFlags();
-  flags.resources = "cpus:2;mem:1024;disk:1024;ports:[31000-32000]";
+  flags.resources = Resources::parse(
+      "cpus:2;mem:1024;disk:1024;ports:[31000-32000]").get();
 
   MockSlave slave(flags, &detector, &containerizer);
   spawn(slave);
@@ -3572,8 +3574,7 @@ TEST_F(SlaveTest, TotalSlaveResourcesIncludedInUsage)
   AWAIT_READY(usage);
 
   // Total resources should match the resources from flag.resources.
-  EXPECT_EQ(Resources(usage.get().total()),
-            Resources::parse(flags.resources.get()).get());
+  EXPECT_EQ(Resources(usage.get().total()), flags.resources.get());
 
   terminate(slave);
   wait(slave);
@@ -3591,8 +3592,9 @@ TEST_F(SlaveTest, CheckpointedResourcesIncludedInUsage)
   StandaloneMasterDetector detector(master.get()->pid);
 
   slave::Flags flags = CreateSlaveFlags();
-  flags.resources = "cpus:2;cpus(role1):3;mem:1024;disk:1024;disk(role1):64;"
-                    "ports:[31000-32000]";
+  flags.resources = Resources::parse(
+      "cpus:2;cpus(role1):3;mem:1024;disk:1024;"
+      "disk(role1):64;ports:[31000-32000]").get();
 
   MockSlave slave(flags, &detector, &containerizer);
   spawn(slave);

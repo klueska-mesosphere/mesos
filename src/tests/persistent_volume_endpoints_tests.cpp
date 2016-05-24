@@ -125,7 +125,7 @@ TEST_F(PersistentVolumeEndpointsTest, StaticReservation)
                     FutureArg<0>(&slaveId)));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "disk(role1):1024";
+  slaveFlags.resources = Resources::parse("disk(role1):1024").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -216,7 +216,7 @@ TEST_F(PersistentVolumeEndpointsTest, DynamicReservation)
                     FutureArg<0>(&slaveId)));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "disk(*):1024";
+  slaveFlags.resources = Resources::parse("disk(*):1024").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -334,7 +334,7 @@ TEST_F(PersistentVolumeEndpointsTest, DynamicReservationRoleMismatch)
                     FutureArg<0>(&slaveId)));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "disk(*):1024";
+  slaveFlags.resources = Resources::parse("disk(*):1024").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -413,7 +413,7 @@ TEST_F(PersistentVolumeEndpointsTest, UnreserveVolumeResources)
                     FutureArg<0>(&slaveId)));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "disk(*):1024";
+  slaveFlags.resources = Resources::parse("disk(*):1024").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -476,7 +476,7 @@ TEST_F(PersistentVolumeEndpointsTest, VolumeExceedsReservedSize)
                     FutureArg<0>(&slaveId)));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "disk(role1):1024";
+  slaveFlags.resources = Resources::parse("disk(role1):1024").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -515,7 +515,7 @@ TEST_F(PersistentVolumeEndpointsTest, DeleteNonExistentVolume)
                     FutureArg<0>(&slaveId)));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "disk(role1):1024";
+  slaveFlags.resources = Resources::parse("disk(role1):1024").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -616,7 +616,7 @@ TEST_F(PersistentVolumeEndpointsTest, NoHeader)
                     FutureArg<0>(&slaveId)));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "disk(role1):1024";
+  slaveFlags.resources = Resources::parse("disk(role1):1024").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -669,7 +669,7 @@ TEST_F(PersistentVolumeEndpointsTest, BadCredentials)
                     FutureArg<0>(&slaveId)));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "disk(role1):1024";
+  slaveFlags.resources = Resources::parse("disk(role1):1024").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -739,7 +739,8 @@ TEST_F(PersistentVolumeEndpointsTest, GoodCreateAndDestroyACL)
   // Create a slave. Disk resources are statically reserved to allow the
   // creation of a persistent volume.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512;disk(role1):1024";
+  slaveFlags.resources = Resources::parse(
+      "cpus:1;mem:512;disk(role1):1024").get();
 
   Future<SlaveID> slaveId;
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _))
@@ -854,9 +855,9 @@ TEST_F(PersistentVolumeEndpointsTest, GoodCreateACLMultipleRoles)
   // Create a slave. Disk resources are statically reserved to allow the
   // creation of a persistent volume.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources =
-    "cpus:1;mem:512;disk(" + AUTHORIZED_ROLE_1 +"):1024;disk(" +
-    AUTHORIZED_ROLE_2 + "):1024";
+  slaveFlags.resources = Resources::parse(
+      "cpus:1;mem:512;disk(" + AUTHORIZED_ROLE_1 +"):1024;disk(" +
+      AUTHORIZED_ROLE_2 + "):1024").get();
 
   Future<SlaveID> slaveId;
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _))
@@ -933,7 +934,8 @@ TEST_F(PersistentVolumeEndpointsTest, BadCreateAndDestroyACL)
   // Create a slave. Disk resources are statically reserved to allow the
   // creation of a persistent volume.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512;disk(role1):1024";
+  slaveFlags.resources = Resources::parse(
+      "cpus:1;mem:512;disk(role1):1024").get();
 
   Future<SlaveID> slaveId;
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _))
@@ -1042,9 +1044,9 @@ TEST_F(PersistentVolumeEndpointsTest, BadCreateACLMultipleRoles)
   // Create a slave. Disk resources are statically reserved to allow the
   // creation of a persistent volume.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources =
-    "cpus:1;mem:512;disk(" + AUTHORIZED_ROLE +"):1024;disk(" +
-    UNAUTHORIZED_ROLE + "):1024";
+  slaveFlags.resources = Resources::parse(
+      "cpus:1;mem:512;disk(" + AUTHORIZED_ROLE +"):1024;disk(" +
+      UNAUTHORIZED_ROLE + "):1024").get();
 
   Future<SlaveID> slaveId;
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _))
@@ -1126,7 +1128,8 @@ TEST_F(PersistentVolumeEndpointsTest, GoodCreateAndDestroyACLBadCredential)
   // Create a slave. Disk resources are statically reserved to allow the
   // creation of a persistent volume.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512;disk(role1):1024";
+  slaveFlags.resources = Resources::parse(
+      "cpus:1;mem:512;disk(role1):1024").get();
 
   Future<SlaveID> slaveId;
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _))
@@ -1227,7 +1230,8 @@ TEST_F(PersistentVolumeEndpointsTest, NoAuthentication)
   // Create an agent with statically reserved disk resources to allow the
   // creation of a persistent volume.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512;disk(" + TEST_ROLE + "):1024";
+  slaveFlags.resources = Resources::parse(
+      "cpus:1;mem:512;disk(" + TEST_ROLE + "):1024").get();
 
   Future<SlaveID> slaveId;
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _))
@@ -1281,7 +1285,7 @@ TEST_F(PersistentVolumeEndpointsTest, NoSlaveId)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "disk(role1):1024";
+  slaveFlags.resources = Resources::parse("disk(role1):1024").get();
 
   Future<SlaveID> slaveId;
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _))
@@ -1342,7 +1346,7 @@ TEST_F(PersistentVolumeEndpointsTest, NoVolumes)
                     FutureArg<0>(&slaveId)));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "disk(role1):1024";
+  slaveFlags.resources = Resources::parse("disk(role1):1024").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -1395,7 +1399,7 @@ TEST_F(PersistentVolumeEndpointsTest, SlavesEndpointFullResources)
                     FutureArg<0>(&slaveId)));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:4;mem:2048;disk:4096";
+  slaveFlags.resources = Resources::parse("cpus:4;mem:2048;disk:4096").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);

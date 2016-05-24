@@ -676,9 +676,8 @@ TEST_F(ReservationEndpointsTest, LabeledResources)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:2;mem:1024";
-  Resources totalSlaveResources =
-    Resources::parse(slaveFlags.resources.get()).get();
+  slaveFlags.resources = Resources::parse("cpus:2;mem:1024").get();
+  Resources totalSlaveResources = slaveFlags.resources.get();
 
   Future<SlaveID> slaveId;
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _))
@@ -988,7 +987,7 @@ TEST_F(ReservationEndpointsTest, GoodReserveAndUnreserveACL)
 
   // Create a slave.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:512").get();
 
   Future<SlaveID> slaveId;
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _))
@@ -1050,7 +1049,7 @@ TEST_F(ReservationEndpointsTest, GoodReserveACLMultipleRoles)
 
   // Create a slave.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:2;mem:1024";
+  slaveFlags.resources = Resources::parse("cpus:2;mem:1024").get();
 
   Future<SlaveID> slaveId;
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _))
@@ -1111,7 +1110,7 @@ TEST_F(ReservationEndpointsTest, BadReserveACL)
 
   // Create a slave.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:512").get();
 
   Future<SlaveID> slaveId;
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _))
@@ -1170,7 +1169,7 @@ TEST_F(ReservationEndpointsTest, BadUnreserveACL)
 
   // Create a slave.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:512").get();
 
   Future<SlaveID> slaveId;
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _))
@@ -1243,7 +1242,7 @@ TEST_F(ReservationEndpointsTest, BadReserveACLMultipleRoles)
 
   // Create a slave.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:2;mem:1024";
+  slaveFlags.resources = Resources::parse("cpus:2;mem:1024").get();
 
   Future<SlaveID> slaveId;
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _))
@@ -1400,7 +1399,7 @@ TEST_F(ReservationEndpointsTest, ReserveAndUnreserveNoAuthentication)
 
   // Create an agent.
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:512").get();
 
   Future<SlaveID> slaveId;
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _))
@@ -1481,7 +1480,7 @@ TEST_F(ReservationEndpointsTest, DifferentPrincipalsSameRole)
                     FutureArg<0>(&slaveId)));
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:2;mem:1024";
+  slaveFlags.resources = Resources::parse("cpus:2;mem:1024").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);

@@ -111,7 +111,7 @@ TYPED_TEST(MasterAllocatorTest, SingleFramework)
   ASSERT_SOME(master);
 
   slave::Flags flags = this->CreateSlaveFlags();
-  flags.resources = Some("cpus:2;mem:1024;disk:0");
+  flags.resources = Resources::parse("cpus:2;mem:1024;disk:0").get();
 
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
@@ -159,7 +159,7 @@ TYPED_TEST(MasterAllocatorTest, ResourcesUnused)
   TestContainerizer containerizer(&exec);
 
   slave::Flags flags1 = this->CreateSlaveFlags();
-  flags1.resources = Some("cpus:2;mem:1024");
+  flags1.resources = Resources::parse("cpus:2;mem:1024").get();
 
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
@@ -263,7 +263,7 @@ TYPED_TEST(MasterAllocatorTest, OutOfOrderDispatch)
   ASSERT_SOME(master);
 
   slave::Flags flags1 = this->CreateSlaveFlags();
-  flags1.resources = Some("cpus:2;mem:1024");
+  flags1.resources = Resources::parse("cpus:2;mem:1024").get();
 
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
@@ -394,7 +394,7 @@ TYPED_TEST(MasterAllocatorTest, SchedulerFailover)
   TestContainerizer containerizer(&exec);
 
   slave::Flags flags = this->CreateSlaveFlags();
-  flags.resources = Some("cpus:3;mem:1024");
+  flags.resources = Resources::parse("cpus:3;mem:1024").get();
 
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
@@ -530,7 +530,7 @@ TYPED_TEST(MasterAllocatorTest, FrameworkExited)
   TestContainerizer containerizer(execs);
 
   slave::Flags flags = this->CreateSlaveFlags();
-  flags.resources = Some("cpus:3;mem:1024");
+  flags.resources = Resources::parse("cpus:3;mem:1024").get();
 
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
@@ -670,7 +670,7 @@ TYPED_TEST(MasterAllocatorTest, SlaveLost)
   // Set the `executor_shutdown_grace_period` to a small value so that
   // the agent does not wait for executors to clean up for too long.
   flags1.executor_shutdown_grace_period = Milliseconds(50);
-  flags1.resources = Some("cpus:2;mem:1024");
+  flags1.resources = Resources::parse("cpus:2;mem:1024").get();
 
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
@@ -740,7 +740,8 @@ TYPED_TEST(MasterAllocatorTest, SlaveLost)
   AWAIT_READY(removeSlave);
 
   slave::Flags flags2 = this->CreateSlaveFlags();
-  flags2.resources = string("cpus:3;mem:256;disk:1024;ports:[31000-32000]");
+  flags2.resources = Resources::parse(
+      "cpus:3;mem:256;disk:1024;ports:[31000-32000]").get();
 
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
@@ -757,7 +758,7 @@ TYPED_TEST(MasterAllocatorTest, SlaveLost)
   AWAIT_READY(resourceOffers);
 
   EXPECT_EQ(Resources(resourceOffers.get()[0].resources()),
-            Resources::parse(flags2.resources.get()).get());
+            flags2.resources.get());
 
   // Shut everything down.
   EXPECT_CALL(allocator, recoverResources(_, _, _, _))
@@ -789,7 +790,7 @@ TYPED_TEST(MasterAllocatorTest, SlaveAdded)
   TestContainerizer containerizer(&exec);
 
   slave::Flags flags1 = this->CreateSlaveFlags();
-  flags1.resources = Some("cpus:3;mem:1024");
+  flags1.resources = Resources::parse("cpus:3;mem:1024").get();
 
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
@@ -841,7 +842,7 @@ TYPED_TEST(MasterAllocatorTest, SlaveAdded)
   AWAIT_READY(launchTask);
 
   slave::Flags flags2 = this->CreateSlaveFlags();
-  flags2.resources = Some("cpus:4;mem:2048");
+  flags2.resources = Resources::parse("cpus:4;mem:2048").get();
 
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
@@ -886,7 +887,7 @@ TYPED_TEST(MasterAllocatorTest, TaskFinished)
   TestContainerizer containerizer(&exec);
 
   slave::Flags flags = this->CreateSlaveFlags();
-  flags.resources = Some("cpus:3;mem:1024");
+  flags.resources = Resources::parse("cpus:3;mem:1024").get();
 
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
@@ -991,7 +992,8 @@ TYPED_TEST(MasterAllocatorTest, CpusOnlyOfferedAndTaskLaunched)
 
   // Start a slave with cpus only resources.
   slave::Flags flags = this->CreateSlaveFlags();
-  flags.resources = Some("cpus:2;mem:0");
+  flags.resources = Resources::parse("cpus:2;mem:0").get();
+  LOG(INFO) << flags.resources.get();
 
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
@@ -1072,7 +1074,7 @@ TYPED_TEST(MasterAllocatorTest, MemoryOnlyOfferedAndTaskLaunched)
 
   // Start a slave with memory only resources.
   slave::Flags flags = this->CreateSlaveFlags();
-  flags.resources = Some("cpus:0;mem:200");
+  flags.resources = Resources::parse("cpus:0;mem:200").get();
 
   EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
@@ -1296,7 +1298,7 @@ TYPED_TEST(MasterAllocatorTest, FrameworkReregistersFirst)
     EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
     slave::Flags flags = this->CreateSlaveFlags();
-    flags.resources = Some("cpus:2;mem:1024");
+    flags.resources = Resources::parse("cpus:2;mem:1024").get();
 
     slave = this->StartSlave(&slaveDetector, &containerizer, flags);
     ASSERT_SOME(slave);
@@ -1420,7 +1422,7 @@ TYPED_TEST(MasterAllocatorTest, SlaveReregistersFirst)
     EXPECT_CALL(allocator, addSlave(_, _, _, _, _));
 
     slave::Flags flags = this->CreateSlaveFlags();
-    flags.resources = Some("cpus:2;mem:1024");
+    flags.resources = Resources::parse("cpus:2;mem:1024").get();
 
     slave = this->StartSlave(&slaveDetector, &containerizer, flags);
     ASSERT_SOME(slave);
@@ -1538,7 +1540,7 @@ TYPED_TEST(MasterAllocatorTest, RebalancedForUpdatedWeights)
                       FutureSatisfy(&addSlave)));
 
     slave::Flags flags = this->CreateSlaveFlags();
-    flags.resources = agentResources;
+    flags.resources = Resources::parse(agentResources).get();
 
     Try<Owned<cluster::Slave>> slave = this->StartSlave(detector.get(), flags);
     ASSERT_SOME(slave);

@@ -470,7 +470,7 @@ TEST_F(CreateOperationValidationTest, InsufficientDiskResource)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "disk(role1):1024";
+  slaveFlags.resources = Resources::parse("disk(role1):1024").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);

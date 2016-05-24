@@ -817,7 +817,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_Usage)
   ASSERT_SOME(master);
 
   slave::Flags flags = CreateSlaveFlags();
-  flags.resources = Option<string>("cpus:2;mem:1024");
+  flags.resources = Resources::parse("cpus:2;mem:1024").get();
 
   MockDocker* mockDocker =
     new MockDocker(tests::flags.docker, tests::flags.docker_socket);
@@ -1450,7 +1450,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_LaunchWithPersistentVolumes)
   Shared<Docker> docker(mockDocker);
 
   slave::Flags flags = CreateSlaveFlags();
-  flags.resources = "cpu:2;mem:2048;disk(role1):2048";
+  flags.resources = Resources::parse("cpu:2;mem:2048;disk(role1):2048").get();
 
   Fetcher fetcher;
 
@@ -1600,7 +1600,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_RecoverPersistentVolumes)
   Shared<Docker> docker(mockDocker);
 
   slave::Flags flags = CreateSlaveFlags();
-  flags.resources = "cpu:2;mem:2048;disk(role1):2048";
+  flags.resources = Resources::parse("cpu:2;mem:2048;disk(role1):2048").get();
 
   Fetcher fetcher;
 
@@ -1761,7 +1761,7 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_RecoverOrphanedPersistentVolumes)
   Shared<Docker> docker(mockDocker);
 
   slave::Flags flags = CreateSlaveFlags();
-  flags.resources = "cpu:2;mem:2048;disk(role1):2048";
+  flags.resources = Resources::parse("cpu:2;mem:2048;disk(role1):2048").get();
 
   Fetcher fetcher;
 
@@ -2808,7 +2808,8 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_NC_PortMapping)
   Shared<Docker> docker(mockDocker);
 
   slave::Flags flags = CreateSlaveFlags();
-  flags.resources = "cpus:1;mem:1024;ports:[10000-10000]";
+  flags.resources = Resources::parse(
+      "cpus:1;mem:1024;ports:[10000-10000]").get();
 
   Fetcher fetcher;
 

@@ -79,7 +79,7 @@ TEST_F(NvidiaGpuTest, ROOT_CGROUPS_NVIDIA_GPU_VerifyDeviceAccess)
   slave::Flags flags = CreateSlaveFlags();
   flags.isolation = "cgroups/devices/gpus/nvidia";
   flags.nvidia_gpu_devices = vector<unsigned int>({0u});
-  flags.resources = "gpus:1";
+  flags.resources = Resources::parse("gpus:1").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
 
@@ -171,7 +171,7 @@ TEST_F(NvidiaGpuTest, ROOT_CGROUPS_NVIDIA_GPU_FractionalResources)
   slave::Flags flags = CreateSlaveFlags();
   flags.isolation = "cgroups/devices/gpus/nvidia";
   flags.nvidia_gpu_devices = vector<unsigned int>({0u});
-  flags.resources = "gpus:1";
+  flags.resources = Resources::parse("gpus:1").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
 

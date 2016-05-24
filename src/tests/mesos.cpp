@@ -211,7 +211,7 @@ slave::Flags MesosTest::CreateSlaveFlags()
     flags.http_credentials = path;
   }
 
-  flags.resources = defaultAgentResourcesString;
+  flags.resources = Resources::parse(defaultAgentResourcesString).get();
 
   flags.registration_backoff_factor = Milliseconds(10);
 
@@ -757,10 +757,11 @@ slave::Flags ContainerizerTest<slave::MesosContainerizer>::CreateSlaveFlags()
     // NOTE: By default, Linux sets host ip local port range to
     // [32768, 61000]. We set 'ephemeral_ports' resource so that it
     // does not overlap with the host ip local port range.
-    flags.resources = strings::join(
-        ";",
-        flags.resources.get(),
-        "ephemeral_ports:[30001-30999]");
+    flags.resources = Resources::parse(
+        strings::join(
+            ";",
+            flags.resources.get(),
+            "ephemeral_ports:[30001-30999]")).get();
 
     // NOTE: '16' should be enough for all our tests.
     flags.ephemeral_ports_per_container = 16;

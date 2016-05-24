@@ -59,14 +59,7 @@ namespace slave {
 // able to report the resources they can isolate.
 Try<Resources> Containerizer::resources(const Flags& flags)
 {
-  Try<Resources> parsed = Resources::parse(
-      flags.resources.getOrElse(""), flags.default_role);
-
-  if (parsed.isError()) {
-    return Error(parsed.error());
-  }
-
-  Resources resources = parsed.get();
+  Resources resources = flags.resources.getOrElse(Resources());
 
   // NOTE: We need to check for the "cpus" string within the flag
   // because once Resources are parsed, we cannot distinguish between
@@ -74,7 +67,7 @@ Try<Resources> Containerizer::resources(const Flags& flags)
   //  (2) no cpus specified.
   // We only auto-detect cpus in case (2).
   // The same logic applies for the other resources!
-  if (!strings::contains(flags.resources.getOrElse(""), "cpus")) {
+  if (resources.cpus().isNone()) {
     // No CPU specified so probe OS or resort to DEFAULT_CPUS.
     double cpus;
     Try<long> cpus_ = os::cpus();
@@ -98,7 +91,7 @@ Try<Resources> Containerizer::resources(const Flags& flags)
   // GPUs are explicitly specified in `--resources`. When Nvidia GPU
   // support is enabled, we also require the GPU devices to be
   // specified in `--nvidia_gpu_devices`.
-  if (strings::contains(flags.resources.getOrElse(""), "gpus")) {
+  if (resources.gpus().isSome()) {
     // Make sure that the value of `gpus` is actually an integer and
     // not a fractional amount. We take advantage of the fact that we
     // know the value of `gpus` is only precise up to 3 decimals.
@@ -125,7 +118,7 @@ Try<Resources> Containerizer::resources(const Flags& flags)
   }
 
   // Memory resource.
-  if (!strings::contains(flags.resources.getOrElse(""), "mem")) {
+  if (resources.mem().isNone()) {
     // No memory specified so probe OS or resort to DEFAULT_MEM.
     Bytes mem;
     Try<os::Memory> mem_ = os::memory();
@@ -150,7 +143,7 @@ Try<Resources> Containerizer::resources(const Flags& flags)
   }
 
   // Disk resource.
-  if (!strings::contains(flags.resources.getOrElse(""), "disk")) {
+  if (resources.disk().isNone()) {
     // No disk specified so probe OS or resort to DEFAULT_DISK.
     Bytes disk;
 
@@ -178,7 +171,7 @@ Try<Resources> Containerizer::resources(const Flags& flags)
   }
 
   // Network resource.
-  if (!strings::contains(flags.resources.getOrElse(""), "ports")) {
+  if (resources.ports().isNone()) {
     // No ports specified so resort to DEFAULT_PORTS.
     resources += Resources::parse(
         "ports",

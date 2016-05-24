@@ -70,7 +70,7 @@ TEST_F(ResourceOffersTest, ResourceOfferWithMultipleSlaves)
   for (int i = 0; i < 10; i++) {
     slave::Flags flags = CreateSlaveFlags();
 
-    flags.resources = Option<std::string>("cpus:2;mem:1024");
+    flags.resources = Resources::parse("cpus:2;mem:1024").get();
 
     Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), flags);
     ASSERT_SOME(slave);

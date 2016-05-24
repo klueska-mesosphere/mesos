@@ -472,7 +472,7 @@ TEST_F(LinuxFilesystemIsolatorTest,
 
   slave::Flags flags = CreateSlaveFlags();
   flags.image_provisioner_backend = "copy";
-  flags.resources = "cpus:2;mem:1024;disk(role1):1024";
+  flags.resources = Resources::parse("cpus:2;mem:1024;disk(role1):1024").get();
 
   // Need this otherwise the persistent volumes are not created
   // within the slave work_dir and thus not retrievable.
@@ -604,7 +604,7 @@ TEST_F(LinuxFilesystemIsolatorTest, ROOT_RecoverOrphanedPersistentVolume)
 
   slave::Flags flags = CreateSlaveFlags();
   flags.image_provisioner_backend = "copy";
-  flags.resources = "cpus:2;mem:1024;disk(role1):1024";
+  flags.resources = Resources::parse("cpus:2;mem:1024;disk(role1):1024").get();
   flags.isolation = "posix/disk,filesystem/linux";
 
   Try<Owned<MesosContainerizer>> containerizer = createContainerizer(
@@ -1474,7 +1474,7 @@ TEST_F(LinuxFilesystemIsolatorTest, ROOT_VolumeUsageExceedsSandboxQuota)
   // the 'du' subprocess.
   flags.container_disk_watch_interval = Milliseconds(1);
   flags.enforce_container_disk_quota = true;
-  flags.resources = "cpus:2;mem:128;disk(role1):128";
+  flags.resources = Resources::parse("cpus:2;mem:128;disk(role1):128").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
 

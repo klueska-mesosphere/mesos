@@ -285,12 +285,13 @@ protected:
 
     flags.launcher_dir = getLauncherDir();
 
-    flags.resources = strings::join(";", vector<string>({
-        containerCPU,
-        containerMemory,
-        containerDisk,
-        ephemeralPorts,
-        persistentPorts }));
+    flags.resources = Resources::parse(
+        strings::join(";", vector<string>({
+            containerCPU,
+            containerMemory,
+            containerDisk,
+            ephemeralPorts,
+            persistentPorts }))).get();
 
     // NOTE: '16' should be enough for all our tests.
     flags.ephemeral_ports_per_container = 16;

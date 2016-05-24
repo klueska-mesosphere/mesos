@@ -258,7 +258,8 @@ TEST_F(DiskQuotaTest, VolumeUsageExceedsQuota)
   // the 'du' subprocess.
   slaveFlags.container_disk_watch_interval = Milliseconds(1);
   slaveFlags.enforce_container_disk_quota = true;
-  slaveFlags.resources = "cpus:2;mem:128;disk(role1):128";
+  slaveFlags.resources = Resources::parse(
+      "cpus:2;mem:128;disk(role1):128").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);

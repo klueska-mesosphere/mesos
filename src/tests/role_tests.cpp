@@ -96,7 +96,7 @@ TEST_F(RoleTest, ImplicitRoleRegister)
   ASSERT_SOME(master);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus:1;mem:512;disk:1024";
+  slaveFlags.resources = Resources::parse("cpus:1;mem:512;disk:1024").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
   Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
@@ -196,7 +196,7 @@ TEST_F(RoleTest, ImplicitRoleStaticReservation)
   TestContainerizer containerizer(&exec);
 
   slave::Flags slaveFlags = CreateSlaveFlags();
-  slaveFlags.resources = "cpus(role):1;mem(role):512";
+  slaveFlags.resources = Resources::parse("cpus(role):1;mem(role):512").get();
 
   Owned<MasterDetector> detector = master.get()->createDetector();
 
@@ -216,8 +216,7 @@ TEST_F(RoleTest, ImplicitRoleStaticReservation)
   Filters filters;
   filters.set_refuse_seconds(0);
 
-  Resources staticallyReserved =
-    Resources::parse(slaveFlags.resources.get()).get();
+  Resources staticallyReserved = slaveFlags.resources.get();
 
   // We use this to capture offers from `resourceOffers`.
   Future<vector<Offer>> offers;

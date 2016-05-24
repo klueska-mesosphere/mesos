@@ -282,7 +282,7 @@ TEST_F(GarbageCollectorIntegrationTest, Restart)
   EXPECT_CALL(sched, registered(_, _, _))
     .Times(1);
 
-  Resources resources = Resources::parse(flags.resources.get()).get();
+  Resources resources = flags.resources.get();
   double cpus = resources.get<Value::Scalar>("cpus").get().value();
   double mem = resources.get<Value::Scalar>("mem").get().value();
 
@@ -393,7 +393,7 @@ TEST_F(GarbageCollectorIntegrationTest, ExitedFramework)
   EXPECT_CALL(sched, registered(_, _, _))
     .WillOnce(SaveArg<1>(&frameworkId));
 
-  Resources resources = Resources::parse(flags.resources.get()).get();
+  Resources resources = flags.resources.get();
   double cpus = resources.get<Value::Scalar>("cpus").get().value();
   double mem = resources.get<Value::Scalar>("mem").get().value();
 
@@ -512,7 +512,7 @@ TEST_F(GarbageCollectorIntegrationTest, ExitedExecutor)
   EXPECT_CALL(sched, registered(_, _, _))
     .WillOnce(FutureArg<1>(&frameworkId));
 
-  Resources resources = Resources::parse(flags.resources.get()).get();
+  Resources resources = flags.resources.get();
   double cpus = resources.get<Value::Scalar>("cpus").get().value();
   double mem = resources.get<Value::Scalar>("mem").get().value();
 
@@ -622,7 +622,7 @@ TEST_F(GarbageCollectorIntegrationTest, DiskUsage)
   EXPECT_CALL(sched, registered(_, _, _))
     .WillOnce(FutureArg<1>(&frameworkId));
 
-  Resources resources = Resources::parse(flags.resources.get()).get();
+  Resources resources = flags.resources.get();
   double cpus = resources.get<Value::Scalar>("cpus").get().value();
   double mem = resources.get<Value::Scalar>("mem").get().value();
 
@@ -754,7 +754,7 @@ TEST_F(GarbageCollectorIntegrationTest, Unschedule)
   EXPECT_CALL(sched, registered(_, _, _))
     .WillOnce(FutureArg<1>(&frameworkId));
 
-  Resources resources = Resources::parse(flags.resources.get()).get();
+  Resources resources = flags.resources.get();
   double cpus = resources.get<Value::Scalar>("cpus").get().value();
   double mem = resources.get<Value::Scalar>("mem").get().value();
 
