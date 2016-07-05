@@ -2420,9 +2420,9 @@ Future<uint64_t> Counter::value() const
 
 namespace devices {
 
-ostream& operator<<(ostream& stream, const Entry::Selector& selector)
+ostream& operator<<(ostream& stream, const Entry::Selector::Type& type)
 {
-  switch (selector.type) {
+  switch (type) {
     case Entry::Selector::Type::ALL:
       stream << "a";
       break;
@@ -2436,7 +2436,13 @@ ostream& operator<<(ostream& stream, const Entry::Selector& selector)
     // will trigger a compile-time error if a case is missed.
   }
 
-  stream << " ";
+  return stream;
+}
+
+
+ostream& operator<<(ostream& stream, const Entry::Selector& selector)
+{
+  stream << selector.type << " ";
 
   if (selector.major.isSome()) {
     stream << stringify(selector.major.get());
