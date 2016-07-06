@@ -18,6 +18,7 @@
 
 #include <process/future.hpp>
 #include <process/gtest.hpp>
+#include <process/io.hpp>
 #include <process/owned.hpp>
 #include <process/subprocess.hpp>
 
@@ -764,6 +765,95 @@ TEST_F(DockerImageTest, ParseInspectonImage)
             image.get().environment.get().at("SPARK_OPTS"));
   EXPECT_EQ("20140324",
             image.get().environment.get().at("CA_CERTIFICATES_JAVA_VERSION"));
+}
+
+
+TEST_F(DockerTest, ROOT_DOCKER_INTERNET_CURL_CompareImageManifests)
+{
+  // Pull down the `alpine` image from the docker registry.
+  Owned<Docker> docker = Docker::create(
+      tests::flags.docker,
+      tests::flags.docker_socket,
+      false).get();
+
+  Try<string> directory = environment->mkdtemp();
+  ASSERT_SOME(directory);
+
+  Future<Docker::Image> pull = docker->pull(directory.get(), "alpine");
+  AWAIT_READY_FOR(pull, Seconds(30));
+
+  // Parse the JSON representation of the image manifest
+  // from `docker inspect alpine` into an ImageManifest object.
+  Try<Subprocess> subprocess = process::subprocess(
+      "docker inspect alpine",
+      Subprocess::FD(STDIN_FILENO),
+      Subprocess::PIPE(),
+      Subprocess::FD(STDERR_FILENO));
+
+  ASSERT_SOME(subprocess);
+  ASSERT_SOME(subprocess->out());
+
+  Future<string> output = io::read(subprocess->out().get());
+  AWAIT_READY(output);
+
+  Try<JSON::Array> array = JSON::parse<JSON::Array>(output.get());
+  ASSERT_SOME(array);
+  ASSERT_EQ(1u, array->values.size());
+  ASSERT_TRUE(array->values[0].is<JSON::Object>());
+
+  Try<::docker::spec::v1::ImageManifest> inspectManifest =
+    ::docker::spec::v1::parse(array->values[0].as<JSON::Object>());
+  ASSERT_SOME(inspectManifest);
+
+  // Save the `alpine` docker image into a tarball and untar it.
+  string command =
+    "cd " + directory.get() + ";"
+    "docker save -o alpine.tar alpine;"
+    "tar -xvf alpine.tar";
+
+  subprocess = process::subprocess(
+      command,
+      Subprocess::PATH("/dev/null"),
+      Subprocess::PATH("/dev/null"),
+      Subprocess::PATH("/dev/null"));
+
+  ASSERT_SOME(subprocess);
+  AWAIT_READY_FOR(subprocess->status(), Seconds(30));
+
+  // Parse the JSON representation of the image manifest
+  // from the `alpine.tar` tarball into an ImageManifest object.
+  string config = "manifest.json";
+  Try<string> read = os::read(path::join(directory.get(), config));
+  ASSERT_SOME(read);
+
+  array = JSON::parse<JSON::Array>(read.get());
+  ASSERT_SOME(array);
+  ASSERT_EQ(1u, array->values.size());
+  ASSERT_TRUE(array->values[0].is<JSON::Object>());
+
+  JSON::Object configObject = array->values[0].as<JSON::Object>();
+  ASSERT_EQ(1u, configObject.values.count("Config"));
+  ASSERT_TRUE(configObject.values["Config"].is<JSON::String>());
+
+  string manifest = configObject.values["Config"].as<JSON::String>().value;
+  read = os::read(path::join(directory.get(), manifest));
+  ASSERT_SOME(read);
+
+  Try<::docker::spec::v1::ImageManifest> tarballManifest =
+    ::docker::spec::v1::parse(read.get());
+  ASSERT_SOME(tarballManifest);
+
+  // Ensure at least one field in the two images manifests is the
+  // same. We pick `docker_version` because it exercises the
+  // conversion of CamelCase to snake_case in the `inspectManifest`
+  // and it is always present in every image manifest.
+  //
+  // TODO(klueska): Do a full comparison of all relevant fields if
+  // they exist in both manifests.
+  ASSERT_TRUE(inspectManifest->has_docker_version());
+  ASSERT_TRUE(tarballManifest->has_docker_version());
+  EXPECT_EQ(inspectManifest->docker_version(),
+            tarballManifest->docker_version());
 }
 
 

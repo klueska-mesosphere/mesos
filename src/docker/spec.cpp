@@ -14,6 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <string>
+
 #include <stout/foreach.hpp>
 #include <stout/json.hpp>
 #include <stout/none.hpp>
@@ -207,8 +209,64 @@ Option<Error> validate(const ImageManifest& manifest)
 }
 
 
-Try<ImageManifest> parse(const JSON::Object& json)
+// The `docker::spec::v1::ImageManifest` protobuf implements the
+// official v1 image manifest specification found at:
+//
+// https://github.com/docker/docker/blob/master/image/spec/v1.md
+//
+// The *top-level* field names in this spec are all written in
+// snake_case as are the field names of the JSON representing the
+// image manifest when reading it from disk (for example after
+// performing a `docker save`). However, the nested fields (e.g.
+// those inside `config`) are all written in CamelCase. To accommodate
+// this, the protobuf for `ImageManifest` defines its fields according
+// using the same mixed-case semantics as the spec. Unfortunately, the
+// `docker inspect` command doesn't follow this convention and reports
+// *all* of its fields in CamelCase.
+//
+// To allow both representations to be parsed in the same way, we
+// intercept the incoming JSON from either source (disk or `docker
+// inspect`) and convert it to their canonical representation outlined
+// in the spec.
+//
+// NOTE: The `Size` field in the spec (and hence in the protobuf) is
+// an outlier and is not written in snake_case like the rest of the
+// fields. We special case this outlier below.
+Try<ImageManifest> parse(const JSON::Object& _json)
 {
+  // Intercept the incoming JSON and turn it
+  // into its canonical snake_case representation.
+  //
+  // NOTE: We purposefully *do not* recurse into the JSON object
+  // because only the top level fields need to be changed into
+  // snake_case if they appear in CamelCase. Nested fields *must*
+  // remain in CamelCase (as defined in the spec).
+  JSON::Object json = _json;
+  foreachpair (const string& camelKey, const JSON::Value& value, _json.values) {
+    if (camelKey == "Size") {
+      continue; // "Size" is the only exception!
+    }
+
+    string snakeKey;
+
+    foreach (char c, camelKey) {
+      if (std::isupper(c)) {
+        if (!snakeKey.empty()) {
+          snakeKey += "_";
+        }
+        snakeKey += std::tolower(c);
+      } else {
+        snakeKey += c;
+      }
+    }
+
+    if (snakeKey != camelKey) {
+      json.values[snakeKey] = value;
+      json.values.erase(camelKey);
+    }
+  }
+
+  // Parse the canonical JSON into an ImagManifest.
   Try<ImageManifest> manifest = protobuf::parse<ImageManifest>(json);
   if (manifest.isError()) {
     return Error("Protobuf parse failed: " + manifest.error());
