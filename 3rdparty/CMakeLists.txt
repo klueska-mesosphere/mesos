@@ -139,6 +139,8 @@ set(LIBEVENT_CMAKE_ARGS
   -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}
   )
 
+PATCH_CMD(${MESOS_3RDPARTY_SRC}/elfio-3.1.patch ELFIO_PATCH_CMD)
+
 # Third-party libraries. Tell the build system how to pull in and build third-
 # party libraries at compile time, using the ExternalProject_Add macro.
 ##############################################################################
@@ -154,6 +156,7 @@ ExternalProject_Add(
 ExternalProject_Add(
   ${ELFIO_TARGET}
   PREFIX            ${ELFIO_CMAKE_ROOT}
+  PATCH_COMMAND     ${ELFIO_PATCH_CMD}
   CONFIGURE_COMMAND ${CMAKE_NOOP}
   BUILD_COMMAND     ${CMAKE_NOOP}
   INSTALL_COMMAND   ${CMAKE_NOOP}
