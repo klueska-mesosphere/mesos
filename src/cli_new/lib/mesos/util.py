@@ -20,8 +20,10 @@ A collection of helper functions used by the CLI and its Plugins.
 
 import imp
 import importlib
+import json
 import os
 import textwrap
+import urllib2
 
 from mesos.exceptions import CLIException
 
@@ -149,3 +151,120 @@ def format_subcommands_help(cmd):
             flag_string += "  %s%s%s\n" % (flag, " " * num_spaces, flags[flag])
 
     return (arguments, short_help, long_help, flag_string)
+
+def hit_endpoint(addr, endpoint):
+    """
+    Hit the specified endpoint and return the results as JSON.
+    """
+    try:
+        url = "http://{addr}/{endpoint}".format(addr=addr, endpoint=endpoint)
+
+        http_response = urllib2.urlopen(url).read().decode("utf-8")
+    except Exception as exception:
+        raise CLIException("Could not open '{url}': {error}"
+                           .format(url=url, error=str(exception)))
+
+    try:
+        return json.loads(http_response)
+    except Exception as exception:
+        raise CLIException("Could load JSON from '{url}': {error}"
+                           .format(url=url, error=str(exception)))
+
+def read_file(addr, path):
+    """
+    Read a file from a master / agent node's sandbox.
+    """
+    # It is undocumented, but calling the `/files/read` endpoint
+    # and setting `offset=-1` returns the length of the file. We
+    # leverage this here to first get the length of the file
+    # before reading it. Unfortunately, there is no way to just
+    # read the file without first getting its length.
+    try:
+        endpoint = "files/read?path={path}&offset=-1".format(path=path)
+        data = hit_endpoint(addr, endpoint)
+    except Exception as exception:
+        raise CLIException("Could not read file length '{path}': {error}"
+                           .format(path=path, error=str(exception)))
+
+    length = data['offset']
+    if length == 0:
+        return
+
+    # Read the file in 1024 byte chunks and yield the results to
+    # the caller. Reading this way allows us to get real-time
+    # updates of the data instead of waiting for the whole file to
+    # be downloaded.
+    offset = 0
+    chunk_size = 1024
+    if (length - offset) < chunk_size:
+        chunk_size = length - offset
+
+    while True:
+        try:
+            endpoint = ("files/read?"
+                        "path={path}&"
+                        "offset={offset}"
+                        "&length={length}"
+                        .format(path=path,
+                                offset=offset,
+                                length=chunk_size))
+
+            data = hit_endpoint(addr, endpoint)
+        except Exception as exception:
+            raise CLIException("Could not read from file '{path}'"
+                               " at offset '{offset}: {error}"
+                               .format(path=path,
+                                       offset=offset,
+                                       error=str(exception)))
+
+        yield data['data']
+
+        offset += len(data['data'])
+        if offset == length:
+            break
+
+        if (length - offset) < chunk_size:
+            chunk_size = length - offset
+
+# pylint: disable=R0903
+class Table(object):
+    """ Defines a custom table structure for printing to the terminal. """
+
+    # Takes a list of column names
+    def __init__(self, columns):
+        self.padding = []
+        self.table = [columns]
+        for column in columns:
+            self.padding.append(len(column))
+
+    # Takes a row entry for every column
+    def add_row(self, row):
+        """
+        Adds a row to the table. Input must be a list where each entry
+        corresponds to its respective column in order.
+        """
+        # Number of entries and columns do not match
+        if len(row) != len(self.table[0]):
+            raise CLIException("Number of entries and columns do no match!")
+
+        # Adjust padding for each column
+        for index, elem in enumerate(row):
+            if len(elem) > self.padding[index]:
+                self.padding[index] = len(elem)
+
+        self.table.append(row)
+
+    def __str__(self):
+        """
+        Converts table to string for printing.
+        """
+        table_string = ""
+        for r_index, row in enumerate(self.table):
+            for index, entry in enumerate(row):
+                table_string += "%s%s" % \
+                        (entry, " " * (self.padding[index] - len(entry) + 2))
+
+            if r_index != len(self.table) - 1:
+                table_string += "\n"
+
+        return table_string
