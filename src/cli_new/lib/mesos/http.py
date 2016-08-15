@@ -54,7 +54,7 @@ def get_json(addr, endpoint, condition=None, timeout=5):
         try:
             data = read_endpoint(addr, endpoint)
         except Exception as exception:
-            exception = exception
+            pass
 
         if data:
             try:
@@ -72,9 +72,7 @@ def get_json(addr, endpoint, condition=None, timeout=5):
                 return data
 
         if time.time() - start_time > timeout:
-            raise CLIException("Failed to get data within"
-                               " {seconds} seconds: {error}"
-                               .format(seconds=str(timeout),
-                                       error=exception))
+            raise CLIException("Failed to get data within {seconds} seconds"
+                               .format(seconds=str(timeout)))
 
         time.sleep(0.1)
