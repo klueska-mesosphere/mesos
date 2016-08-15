@@ -54,6 +54,7 @@ SSH_KEYS = {}
 
 # The builtin plugins.
 PLUGINS = [
+    os.path.join(PROJECT_DIR, "lib/mesos/plugins", "agent"),
     os.path.join(PROJECT_DIR, "lib/mesos/plugins", "container")
 ]
 
