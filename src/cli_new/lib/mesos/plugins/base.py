@@ -99,7 +99,10 @@ class PluginBase(object):
         if hasattr(module, "USAGE"):
             self.USAGE = getattr(module, "USAGE")
 
-        config_vars = {}
+        config_vars = {
+            "agent_ip" : config.AGENT_IP,
+            "agent_port" : config.AGENT_PORT
+        }
 
         for command in self.COMMANDS:
             for flag in self.COMMANDS[command]["flags"]:

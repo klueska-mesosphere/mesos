@@ -53,7 +53,9 @@ MASTER_PORT = "5050"
 SSH_KEYS = {}
 
 # The builtin plugins.
-PLUGINS = []
+PLUGINS = [
+    os.path.join(PROJECT_DIR, "lib/mesos/plugins", "container")
+]
 
 # Absolute directory to the executables required by commands and test cases
 # If left empty string, assumed they are in the path. Path must end with a /
