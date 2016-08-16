@@ -25,11 +25,13 @@ import config
 
 from mesos.plugins.agent.tests import Test_AgentPlugin
 from mesos.plugins.cluster.tests import Test_ClusterPlugin
+from mesos.plugins.container.tests import Test_ContainerPlugin
 
 if __name__ == '__main__':
     print colored("Running the Mesos CLI unit tests", "yellow")
 
     Test_ClusterPlugin.config = config
     Test_AgentPlugin.config = config
+    Test_ContainerPlugin.config = config
 
     unittest.main(verbosity=2)

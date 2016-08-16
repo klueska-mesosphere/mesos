@@ -353,7 +353,11 @@ class Container(PluginBase):
                                        error=exception))
 
         try:
-            subprocess.call(argv["<command>"])
+            # The option to just return the output helps us in testing
+            if "Record" in argv and argv["Record"]:
+                return subprocess.check_output(argv["<command>"])
+            else:
+                subprocess.call(argv["<command>"])
         except Exception as exception:
             raise CLIException("Unable to execute command '{command}' for"
                                " container '{container}': {error}"
@@ -432,7 +436,12 @@ class Container(PluginBase):
         argv["<command>"] = ["ps", "-ax"]
 
         try:
-            self.execute(argv)
+            # The option to just return the output helps us in testing
+            if "Record" in argv and argv["Record"]:
+                return self.execute(argv)
+            else:
+                self.execute(argv)
+
         except Exception as exception:
             raise CLIException("Unable to execute: {error}"
                                .format(error=exception))
@@ -474,6 +483,7 @@ class Container(PluginBase):
             pids[container["container_id"]] = pid
 
         manager = Manager()
+        # pylint: disable=E1101
         process_data = manager.dict()
 
         def get_container_status(process_data):
@@ -558,7 +568,12 @@ class Container(PluginBase):
 
                 # Print the output to the `curses` screen.
                 try:
-                    stdscr.addstr(0, 0, output)
+                    # The option to just return the output helps us in testing
+                    if "Record" in argv and argv["Record"]:
+                        curses.endwin()
+                        return output
+                    else:
+                        stdscr.addstr(0, 0, output)
                 except Exception as exception:
                     raise CLIException("Unable to add output to the"
                                        " curses screen: {error}"
