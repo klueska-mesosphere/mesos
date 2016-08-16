@@ -22,6 +22,7 @@ layout: documentation
     * [Docker Volume Support](docker-volume.md)
     * [CNI support](cni.md)
   * [Docker Containerizer](docker-containerizer.md) for launching a Docker image as a Task, or as an Executor.
+  * [External Containerizer](external-containerizer.md) for custom containerization implementations (deprecated).
 * [Roles](roles.md)
 * [Weights](weights.md)
 * [Authentication](authentication.md)
@@ -36,6 +37,13 @@ layout: documentation
 * [Tools](tools.md) for setting up and running a Mesos cluster.
 * [SSL](ssl.md) for enabling and enforcing SSL communication.
 * [Container Image](container-image.md) for supporting container images in Mesos containerizer.
+
+##Mesos CLI
+* [Overview](cli-overview.md) for the Mesos CLI.
+* [API](cli-api.md)
+* [Config File](cli-config.md)
+* [Creating your own plugin](cli-plugin-guide.md)
+
 
 ## Advanced Features
 
