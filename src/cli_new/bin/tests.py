@@ -18,11 +18,16 @@
 This is the main executable of the mesos-cli unit tests.
 """
 
-import redgreenunittest as unittest
-
+import unittest
 from termcolor import colored
 
+import config
+
+from mesos.plugins.cluster.tests import Test_ClusterPlugin
 
 if __name__ == '__main__':
     print colored("Running the Mesos CLI unit tests", "yellow")
+
+    Test_ClusterPlugin.config = config
+
     unittest.main(verbosity=2)
