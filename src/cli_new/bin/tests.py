@@ -23,11 +23,13 @@ from termcolor import colored
 
 import config
 
+from mesos.plugins.agent.tests import Test_AgentPlugin
 from mesos.plugins.cluster.tests import Test_ClusterPlugin
 
 if __name__ == '__main__':
     print colored("Running the Mesos CLI unit tests", "yellow")
 
     Test_ClusterPlugin.config = config
+    Test_AgentPlugin.config = config
 
     unittest.main(verbosity=2)
