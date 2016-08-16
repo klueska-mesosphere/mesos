@@ -101,7 +101,9 @@ class PluginBase(object):
 
         config_vars = {
             "agent_ip" : config.AGENT_IP,
-            "agent_port" : config.AGENT_PORT
+            "agent_port" : config.AGENT_PORT,
+            "master_ip" : config.MASTER_IP,
+            "master_port" : config.MASTER_PORT
         }
 
         for command in self.COMMANDS:
