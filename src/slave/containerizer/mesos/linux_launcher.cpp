@@ -350,22 +350,22 @@ Try<pid_t> LinuxLauncher::fork(
         child);
   }));
 
+  // Create the directory for checkpointing the container pid and exit
+  // status. We use 'this->flags' here because we have to disambiguate
+  // from the 'flags' parameter passed to 'LinuxLauncher::fork'.
+  //
+  // TODO(benh): Should really just have 'os::write' create the
+  // directories recursively as needed.
+  string directory = getRuntimePathForContainer(this->flags, containerId);
+
+  Try<Nothing> mkdir = os::mkdir(directory);
+  if (mkdir.isError()) {
+    return Error(
+        "Failed to make directory '" + directory + "': " + mkdir.error());
+  }
+
   // Create parent Hook for checkpointing the pid.
   parentHooks.emplace_back(Subprocess::Hook([=](pid_t child) -> Try<Nothing> {
-    // Need to make sure the directory has been created first. Note
-    // that we use 'this->flags' here because we have to disambiguate
-    // from the 'flags' parameter passed to 'LinuxLauncher::fork'.
-    //
-    // TODO(benh): Should really just have 'os::write' create the
-    // directories recursively as needed.
-    string directory = getRuntimePathForContainer(this->flags, containerId);
-
-    Try<Nothing> mkdir = os::mkdir(directory);
-    if (mkdir.isError()) {
-      return Error(
-          "Failed to make directory '" + directory + "': " + mkdir.error());
-    }
-
     return os::write(path::join(directory, "pid"), stringify(child));
   }));
 
