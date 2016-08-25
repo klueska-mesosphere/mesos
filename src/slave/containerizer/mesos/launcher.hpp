@@ -86,6 +86,11 @@ public:
   virtual std::string getExitStatusCheckpointPath(
       const ContainerID& containerId) = 0;
 
+  // Wait for the container with `containerId` to complete.
+  // The exit status of the container is returned.
+  virtual process::Future<Option<int>> wait(
+      const ContainerID& containerId) = 0;
+
 protected:
   // Returns a path representation of a ContainerID that can be used
   // for creating cgroups or writing to the filesystem. A ContainerID
@@ -155,6 +160,9 @@ public:
       const ContainerID& containerId);
 
   virtual std::string getExitStatusCheckpointPath(
+      const ContainerID& containerId);
+
+  virtual process::Future<Option<int>> wait(
       const ContainerID& containerId);
 
 protected:
