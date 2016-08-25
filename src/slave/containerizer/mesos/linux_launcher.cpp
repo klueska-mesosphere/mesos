@@ -131,6 +131,10 @@ Try<hashmap<ContainerID, LinuxLauncher::Container>> LinuxLauncher::recover(
 
   // Determine the ContainerID for this cgroup.
   foreach (const string& token, strings::tokenize(cgroup, "/")) {
+    if (token == "mesos") {
+      continue;
+    }
+
     // Only add a parent if this isn't the first token (which we
     // determine by checking if the current 'id' field has been
     // set).
