@@ -376,7 +376,7 @@ ContainerState createContainerState(
     const Option<ExecutorInfo>& executorInfo,
     const ContainerID& container_id,
     pid_t pid,
-    const Option<string>& directory)
+    const string& directory)
 {
   ContainerState state;
 
@@ -386,10 +386,7 @@ ContainerState createContainerState(
 
   state.mutable_container_id()->CopyFrom(container_id);
   state.set_pid(pid);
-
-  if (directory.isSome()) {
-    state.set_directory(directory.get());
-  }
+  state.set_directory(directory);
 
   return state;
 }
