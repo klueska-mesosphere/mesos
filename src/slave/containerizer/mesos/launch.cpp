@@ -407,67 +407,24 @@ int MesosContainerizerLaunch::execute()
 
       cout << "Executing pre-exec command '" << value << "'" << endl;
 
-      // We use fork/exec here to avoid calling `process:subprocess()`
-      // and initializing all of `libprocess` (and subsequently
-      // creating a whole bunch of unused threads, etc.) just to run
-      // this simple script. In the past, we used `os::system()` here
-      // to avoid initializing libprocess, but this caused security
-      // issues with allowing arbitrary shell commands to be appended
-      // to root-level pre-exec commands that take strings as their
-      // last argument (e.g. mount --bind <src> <target>, where target
-      // is user supplied and is set to "target_dir; rm -rf /"). We
-      // now handle this case by invoking `execvp` directly (which
-      // ensures that exactly one command is invoked and that all of
-      // the strings passed to it are treated as direct arguments to
-      // that one command).
-      //
-      // TODO(klueska): Refactor `libprocess::subprocess()` to pull
-      // the base functionality into stout to avoid initializing
-      // libprocess for simple use cases like this one.
-      pid_t pid = ::fork();
+      int status = 0;
 
-      if (pid == -1) {
-        cerr << "Failed to fork() the pre-exec command: "
-             << os::strerror(errno) << endl;
-        exitWithStatus(EXIT_FAILURE);
-      }
-
-      if (pid == 0) {
-        if (parse->shell()) {
-          // Execute the command using the shell.
-          os::execlp(os::Shell::name,
-                     os::Shell::arg0,
-                     os::Shell::arg1,
-                     parse->value().c_str(),
-                     (char*) nullptr);
-        } else {
-          // Use execvp to launch the command.
-          os::execvp(parse->value().c_str(),
-                 os::raw::Argv(parse->arguments()));
+      if (parse->shell()) {
+        // Execute the command using the system shell.
+        status = os::system(parse->value());
+      } else {
+        // Directly spawn all non-shell commands to prohibit users
+        // from injecting arbitrary shell commands in the arguments.
+        vector<string> args;
+        foreach (const string& arg, parse->arguments()) {
+          args.push_back(arg);
         }
 
-        cerr << "Failed to execute pre-exec command:"
-             << " " << os::strerror(errno) << endl;
-        UNREACHABLE();
+        status = os::spawn(parse->value(), args);
       }
 
-      int status = 0;
-      Result<pid_t> waitpid = os::waitpid(pid, &status, 0);
-
-      if (waitpid.isError()) {
-        cerr << "Failed to os::waitpid() on pre-exec command"
-             << " '" << value << "': " << waitpid.error() << endl;
-        exitWithStatus(EXIT_FAILURE);
-      } else if (waitpid.isNone()) {
-        cerr << "Calling os::waitpid() with blocking semantics"
-             << "returned asynchronously for pre-exec command"
-             << " '" << value << "': " << waitpid.error() << endl;
-        exitWithStatus(EXIT_FAILURE);
-      }
-
-      if (status != 0) {
-        cerr << "The pre-exec command '" << value << "'"
-             << " failed with status " << status << endl;
+      if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
+        cerr << "Failed to execute pre-exec command '" <<value << "'" << endl;
         exitWithStatus(EXIT_FAILURE);
       }
     }
