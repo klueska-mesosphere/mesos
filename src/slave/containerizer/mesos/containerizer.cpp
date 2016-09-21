@@ -2135,8 +2135,9 @@ Future<Option<int>> MesosContainerizerProcess::reap(
       }
 
       if (WEXITSTATUS(status.get()) != EXIT_SUCCESS) {
-        return Failure("The 'init' process of the container exited with"
-                       " exit status: " + WEXITSTATUS(status.get()));
+        return Failure(
+            "The 'init' process of the container exited with "
+            "exit status: " + stringify(WEXITSTATUS(status.get())));
       }
 
       const string statusPath =
