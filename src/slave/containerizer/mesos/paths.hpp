@@ -63,6 +63,13 @@ std::string getRuntimePath(
     const Flags& flags,
     const ContainerID& containerId);
 
+
+// The helper method to list all-level container ids from the container
+// runtime directory.
+Result<std::vector<ContainerID>> getRuntimeContainerIds(
+    const std::string& runtimeDir,
+    const std::string& directory);
+
 } // namespace paths {
 } // namespace containerizer {
 } // namespace slave {
