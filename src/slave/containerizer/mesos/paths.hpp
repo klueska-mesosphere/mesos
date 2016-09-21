@@ -29,6 +29,9 @@ namespace slave {
 namespace containerizer {
 namespace paths {
 
+constexpr char PID_FILE[] = "pid";
+constexpr char CONTAINER_STATUS_FILE[] = "container_status";
+
 // Returns a path representation of a ContainerID that can be used
 // for creating cgroups or writing to the filesystem. A ContainerID
 // can represent a nested container (i.e, it has a parent
@@ -56,17 +59,7 @@ std::string buildPathForContainer(
 // /var/run/mesos/containers/a9dd
 // /var/run/mesos/containers/a9dd/pid
 // /var/run/mesos/containers/a9dd/containers/4e3a/pid
-std::string getRuntimePathForContainer(
-    const Flags& flags,
-    const ContainerID& containerId);
-
-
-std::string getWaitStatusCheckpointPath(
-    const Flags& flags,
-    const ContainerID& containerId);
-
-
-std::string getPidCheckpointPath(
+std::string getRuntimePath(
     const Flags& flags,
     const ContainerID& containerId);
 

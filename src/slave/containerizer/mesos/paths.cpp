@@ -41,34 +41,13 @@ string buildPathForContainer(
 }
 
 
-string getRuntimePathForContainer(
+string getRuntimePath(
     const Flags& flags,
     const ContainerID& containerId)
 {
   return path::join(
       flags.runtime_dir,
       buildPathForContainer(containerId, "containers"));
-}
-
-
-
-string getWaitStatusCheckpointPath(
-    const Flags& flags,
-    const ContainerID& containerId)
-{
-  return path::join(
-      getRuntimePathForContainer(flags, containerId),
-      "status");
-}
-
-
-string getPidCheckpointPath(
-    const Flags& flags,
-    const ContainerID& containerId)
-{
-  return path::join(
-      getRuntimePathForContainer(flags, containerId),
-      "pid");
 }
 
 } // namespace paths {
