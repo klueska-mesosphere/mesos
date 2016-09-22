@@ -985,11 +985,11 @@ TEST_F(MesosContainerizerTest, ROOT_CGROUPS_DestroyNested)
 
   AWAIT_READY(nestedWait);
 
-  // We don't expect a wait status because we'll end up destroying the
-  // 'init' process that would be responsible for writing the wait
-  // status and since a nested container is not a direct child we
-  // won't be able to reap the wait status directly.
-  ASSERT_FALSE(nestedWait->has_status());
+  // We expect a wait status of SIGKILL on the nested container.
+  // Since the kernel will destroy these via a SIGKILL, we expect
+  // a SIGKILL here.
+  ASSERT_TRUE(nestedWait->has_status());
+  EXPECT_WTERMSIG_EQ(SIGKILL, nestedWait->status());
 
   Future<ContainerTermination> wait = containerizer->wait(containerId);
 
@@ -1070,17 +1070,17 @@ TEST_F(MesosContainerizerTest, ROOT_CGROUPS_LaunchNestedDestroyParent)
 
   containerizer->destroy(containerId);
 
+  AWAIT_READY(nestedWait);
+
+  // We expect a wait status of SIGKILL on the nested container.
+  // Since the kernel will destroy these via a SIGKILL, we expect
+  // a SIGKILL here.
+  ASSERT_TRUE(nestedWait->has_status());
+  EXPECT_WTERMSIG_EQ(SIGKILL, nestedWait->status());
+
   AWAIT_READY(wait);
   ASSERT_TRUE(wait->has_status());
   EXPECT_WTERMSIG_EQ(SIGKILL, wait->status());
-
-  AWAIT_READY(nestedWait);
-
-  // We don't expect a wait status because we'll end up destroying the
-  // 'init' process that would be responsible for writing the wait
-  // status and since a nested container is not a direct child we
-  // won't be able to reap the wait status directly.
-  ASSERT_FALSE(nestedWait->has_status());
 }
 
 
@@ -1110,7 +1110,6 @@ TEST_F(MesosContainerizerTest, ROOT_CGROUPS_LaunchNestedParentExit)
   containerId.set_value(UUID::random().toString());
 
   int pipes[2] = {-1, -1};
-
   ASSERT_SOME(os::pipe(pipes));
 
   ExecutorInfo executor = CREATE_EXECUTOR_INFO(
@@ -1168,11 +1167,13 @@ TEST_F(MesosContainerizerTest, ROOT_CGROUPS_LaunchNestedParentExit)
 
   AWAIT_READY(nestedWait);
 
-  // We don't expect a wait status because we'll end up destroying the
-  // 'init' process that would be responsible for writing the wait
-  // status and since a nested container is not a direct child we
-  // won't be able to reap the wait status directly.
-  ASSERT_FALSE(nestedWait->has_status());
+  // We expect a wait status of SIGKILL on the nested container
+  // because when the parent container is destroyed we expect any
+  // nested containers to be destroyed as a result of destroying the
+  // parent's pid namespace. Since the kernel will destroy these via a
+  // SIGKILL, we expect a SIGKILL here.
+  ASSERT_TRUE(nestedWait->has_status());
+  EXPECT_WTERMSIG_EQ(SIGKILL, nestedWait->status());
 }
 
 
@@ -1474,11 +1475,11 @@ TEST_F(MesosContainerizerTest, ROOT_CGROUPS_RecoverNested)
 
   AWAIT_READY(nestedWait);
 
-  // We don't expect a wait status because we'll end up destroying the
-  // 'init' process that would be responsible for writing the wait
-  // status and since a nested container is not a direct child we
-  // won't be able to reap the wait status directly.
-  ASSERT_FALSE(nestedWait->has_status());
+  // We expect a wait status of SIGKILL on the nested container.
+  // Since the kernel will destroy these via a SIGKILL, we expect
+  // a SIGKILL here.
+  ASSERT_TRUE(nestedWait->has_status());
+  EXPECT_WTERMSIG_EQ(SIGKILL, nestedWait->status());
 
   Future<ContainerTermination> wait = containerizer->wait(containerId);
 
@@ -1956,11 +1957,11 @@ TEST_F(MesosContainerizerTest,
 
   AWAIT_READY(nestedWait1);
 
-  // We don't expect a wait status because we'll end up destroying the
-  // 'init' process that would be responsible for writing the wait
-  // status and since a nested container is not a direct child we
-  // won't be able to reap the wait status directly.
-  ASSERT_FALSE(nestedWait1->has_status());
+  // We expect a wait status of SIGKILL on the nested container.
+  // Since the kernel will destroy these via a SIGKILL, we expect
+  // a SIGKILL here.
+  ASSERT_TRUE(nestedWait1->has_status());
+  EXPECT_WTERMSIG_EQ(SIGKILL, nestedWait1->status());
 
   Future<ContainerTermination> wait = containerizer->wait(containerId);
 
