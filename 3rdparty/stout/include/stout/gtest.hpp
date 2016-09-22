@@ -219,7 +219,7 @@ inline ::testing::AssertionResult AssertExitStatusEq(
     } else {
       return ::testing::AssertionFailure()
         << "Value of: WEXITSTATUS(" << actualExpr << ")\n"
-        << "  Actual: " << ::testing::PrintToString(actual) << "\n"
+        << "  Actual: " << ::testing::PrintToString(WEXITSTATUS(actual)) << "\n"
         << "Expected: " << expectedExpr << "\n"
         << "Which is: " << ::testing::PrintToString(expected);
     }
@@ -252,7 +252,7 @@ inline ::testing::AssertionResult AssertExitStatusNe(
     } else {
       return ::testing::AssertionFailure()
         << "Value of: WEXITSTATUS(" << actualExpr << ")\n"
-        << "  Actual: " << ::testing::PrintToString(actual) << "\n"
+        << "  Actual: " << ::testing::PrintToString(WEXITSTATUS(actual)) << "\n"
         << "Expected: " << expectedExpr << "\n"
         << "Which is: " << ::testing::PrintToString(expected);
     }
@@ -316,7 +316,7 @@ inline ::testing::AssertionResult AssertTermSigEq(
     } else {
       return ::testing::AssertionFailure()
         << "Value of: WTERMSIG(" << actualExpr << ")\n"
-        << "  Actual: " << ::testing::PrintToString(actual) << "\n"
+        << "  Actual: " << ::testing::PrintToString(WTERMSIG(actual)) << "\n"
         << "Expected: " << expectedExpr << "\n"
         << "Which is: " << ::testing::PrintToString(expected);
     }
@@ -348,7 +348,7 @@ inline ::testing::AssertionResult AssertTermSigNe(
     } else {
       return ::testing::AssertionFailure()
         << "Value of: WTERMSIG(" << actualExpr << ")\n"
-        << "  Actual: " << ::testing::PrintToString(actual) << "\n"
+        << "  Actual: " << ::testing::PrintToString(WTERMSIG(actual)) << "\n"
         << "Expected: " << expectedExpr << "\n"
         << "Which is: " << ::testing::PrintToString(expected);
     }
