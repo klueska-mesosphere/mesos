@@ -1094,7 +1094,7 @@ TEST_F(MesosContainerizerTest, ROOT_CGROUPS_LaunchNestedParentExit)
 
   Try<MesosContainerizer*> create = MesosContainerizer::create(
       flags,
-      false,
+      true,
       &fetcher);
 
   ASSERT_SOME(create);
@@ -1114,7 +1114,7 @@ TEST_F(MesosContainerizerTest, ROOT_CGROUPS_LaunchNestedParentExit)
 
   ExecutorInfo executor = CREATE_EXECUTOR_INFO(
       "executor",
-      "read -u " + stringify(pipes[0]));
+      "read key <&" + stringify(pipes[0]));
 
   executor.mutable_resources()->CopyFrom(Resources::parse("cpus:1").get());
 
@@ -1159,7 +1159,7 @@ TEST_F(MesosContainerizerTest, ROOT_CGROUPS_LaunchNestedParentExit)
   Future<ContainerTermination> nestedWait =
     containerizer->wait(nestedContainerId);
 
-  close(pipes[1]); // Force the 'read -u fd' to exit!
+  close(pipes[1]); // Force the 'read key' to exit!
 
   AWAIT_READY(wait);
   ASSERT_TRUE(wait->has_status());
