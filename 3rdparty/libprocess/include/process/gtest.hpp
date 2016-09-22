@@ -29,6 +29,10 @@
 #include <stout/stopwatch.hpp>
 #include <stout/strings.hpp>
 
+#ifdef __WINDOWS__
+#include <stout/windows.hpp>
+#endif // __WINDOWS__
+
 namespace process {
 
 constexpr char READONLY_HTTP_AUTHENTICATION_REALM[] = "libprocess-readonly";
