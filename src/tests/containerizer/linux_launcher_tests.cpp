@@ -1163,7 +1163,7 @@ TEST_F(MesosContainerizerTest, ROOT_CGROUPS_LaunchNestedParentExit)
 
   AWAIT_READY(wait);
   ASSERT_TRUE(wait->has_status());
-  EXPECT_WEXITSTATUS_EQ(1, wait->status());
+  EXPECT_WEXITSTATUS_NE(0, wait->status());
 
   AWAIT_READY(nestedWait);
 
