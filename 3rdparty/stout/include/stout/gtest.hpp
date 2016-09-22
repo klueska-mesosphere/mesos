@@ -21,6 +21,10 @@
 #include <stout/result.hpp>
 #include <stout/try.hpp>
 
+#ifdef __WINDOWS__
+#include <stout/windows.hpp>
+#endif // __WINDOWS__
+
 
 template <typename T>
 ::testing::AssertionResult AssertSome(
