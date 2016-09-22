@@ -133,6 +133,38 @@ Result<vector<ContainerID>> getRuntimeContainerIds(
   return containers;
 }
 
+
+Result<pid_t> getContainerPid(
+    const string& runtimePath,
+    const ContainerID& containerId)
+{
+  const string path = path::join(runtimePath, PID_FILE);
+  if (!os::exists(path)) {
+    // This is possible because we don't atomically create the
+    // directory and write the 'pid' file and thus we might
+    // terminate/restart after we've created the directory but
+    // before we've written the file.
+    return None();
+  }
+
+  Try<string> read = os::read(path);
+  if (read.isError()) {
+    return Error("Failed to recover pid of container: " + read.error());
+  }
+
+  Try<pid_t> pid = numify<pid_t>(read.get());
+  if (pid.isError()) {
+    return Error(
+        "Failed to numify pid '" + read.get() +
+        "' of container at '" + path + "': " + pid.error());
+  }
+
+  return pid.get();
+}
+
+
+Try
+
 } // namespace paths {
 } // namespace containerizer {
 } // namespace slave {

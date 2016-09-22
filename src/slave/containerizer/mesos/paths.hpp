@@ -70,6 +70,12 @@ Result<std::vector<ContainerID>> getRuntimeContainerIds(
     const std::string& runtimeDir,
     const std::string& directory);
 
+
+// The helper method to read the pid file.
+Result<pid_t> getContainerPid(
+    const std::string& runtimePath,
+    const ContainerID& containerId);
+
 } // namespace paths {
 } // namespace containerizer {
 } // namespace slave {
