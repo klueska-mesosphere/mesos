@@ -2110,30 +2110,16 @@ Future<Option<int>> MesosContainerizerProcess::reap(
       }
 
       // If we are a non-legacy container, attempt to reap the
-      // container status from the checkpointed status file
-      const string containerStatusPath =
-        path::join(
-            containerizer::paths::getRuntimePath(flags, containerId),
-            containerizer::paths::CONTAINER_STATUS_FILE);
+      // container status from the checkpointed status file.
+      Result<int> containerStatus = containerizer::paths::getContainerStatus(
+          containerizer::paths::getRuntimePath(flags, containerId),
+          containerId);
 
-      if (os::exists(containerStatusPath)) {
-        Try<string> read = os::read(containerStatusPath);
-        if (read.isError()) {
-          return Failure("Unable to read status for container"
-                         " '" + containerId.value() + "' from checkpoint file"
-                         " '" + containerStatusPath + "': " + read.error());
-        }
-
-        if (read.get() != "") {
-          Try<int> containerStatus = numify<int>(read.get());
-          if (containerStatus.isError()) {
-            return Failure("Unable to read status for container"
-                           " '" + containerId.value() + "' as integer from"
-                           " '" + containerStatusPath + "': " + read.error());
-          }
-
-          return containerStatus.get();
-        }
+      if (containerStatus.isError()) {
+        return Failure("Failed to get container status: " +
+                       containerStatus.error());
+      } else if (containerStatus.isSome()) {
+        return containerStatus.get();
       }
 
       // If there isn't a container status file or it is empty, then the
