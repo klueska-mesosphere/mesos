@@ -163,7 +163,35 @@ Result<pid_t> getContainerPid(
 }
 
 
-Try
+Result<int> getContainerStatus(
+    const string& runtimePath,
+    const ContainerID& containerId)
+{
+  const string path = path::join(runtimePath, CONTAINER_STATUS_FILE);
+  if (!os::exists(path)) {
+    return None();
+  }
+
+  Try<string> read = os::read(path);
+  if (read.isError()) {
+    return Error("Unable to read status for container '" +
+                 containerId.value() + "' from checkpoint file '" +
+                 path + "': " + read.error());
+  }
+
+  if (read.get() != "") {
+    Try<int> containerStatus = numify<int>(read.get());
+    if (containerStatus.isError()) {
+      return Error("Unable to read status for container '" +
+                   containerId.value() + "' as integer from '" +
+                   path + "': " + read.error());
+    }
+
+    return containerStatus.get();
+  }
+
+  return None();
+}
 
 } // namespace paths {
 } // namespace containerizer {

@@ -76,6 +76,12 @@ Result<pid_t> getContainerPid(
     const std::string& runtimePath,
     const ContainerID& containerId);
 
+
+// The helper method to read the status file.
+Result<int> getContainerStatus(
+    const std::string& runtimePath,
+    const ContainerID& containerId);
+
 } // namespace paths {
 } // namespace containerizer {
 } // namespace slave {
