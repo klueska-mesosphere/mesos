@@ -1112,11 +1112,15 @@ TEST_F(MesosContainerizerTest, ROOT_CGROUPS_LaunchNestedParentExit)
   int pipes[2] = {-1, -1};
   ASSERT_SOME(os::pipe(pipes));
 
-  ExecutorInfo executor = CREATE_EXECUTOR_INFO(
-      "executor",
-      "read key <&" + stringify(pipes[0]));
-
+  ExecutorInfo executor;
+  executor.mutable_executor_id()->set_value("executor");
   executor.mutable_resources()->CopyFrom(Resources::parse("cpus:1").get());
+
+  executor.mutable_command()->set_shell(false);
+  executor.mutable_command()->set_value("bash");
+  executor.mutable_command()->add_arguments("-c");
+  executor.mutable_command()->add_arguments(
+      "read -u " + stringify(pipes[0]));
 
   Try<string> directory = environment->mkdtemp();
   ASSERT_SOME(directory);
@@ -1206,11 +1210,16 @@ TEST_F(MesosContainerizerTest, ROOT_CGROUPS_LaunchNestedParentSigterm)
   int pipes[2] = {-1, -1};
   ASSERT_SOME(os::pipe(pipes));
 
-  ExecutorInfo executor = CREATE_EXECUTOR_INFO(
-      "executor",
+  ExecutorInfo executor;
+  executor.mutable_executor_id()->set_value("executor");
+  executor.mutable_resources()->CopyFrom(Resources::parse("cpus:1").get());
+
+  executor.mutable_command()->set_shell(false);
+  executor.mutable_command()->set_value("bash");
+  executor.mutable_command()->add_arguments("-c");
+  executor.mutable_command()->add_arguments(
       "echo running >&" + stringify(pipes[1]) + ";"
       "sleep 1000");
-  executor.mutable_resources()->CopyFrom(Resources::parse("cpus:1").get());
 
   Try<string> directory = environment->mkdtemp();
   ASSERT_SOME(directory);
