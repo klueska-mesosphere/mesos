@@ -1391,10 +1391,39 @@ mesos_log_SOURCES = log/main.cpp
 mesos_log_CPPFLAGS = $(MESOS_CPPFLAGS)
 mesos_log_LDADD = libmesos.la $(LDADD)
 
+if ENABLE_NEW_CLI
+MESOS_CLI_SRCDIR = $(srcdir)/cli_new
+MESOS_CLI_BUILDDIR = $(builddir)/cli
+MESOS_CLI_HIDDEN_IMPORTS = \
+  $(patsubst %, --hidden-import mesos.plugins.%, \
+    $(notdir $(shell find $(MESOS_CLI_SRCDIR)/lib/mesos/plugins \
+                          -mindepth 1 -maxdepth 1 -type d)))
+
+bin_PROGRAMS += mesos
+
+mesos$(EXEEXT): $(shell find $(MESOS_CLI_SRCDIR) | grep -v .virtualenv)
+	@echo "Building the CLI ..."
+	@PYTHON=$(PYTHON) \
+	 VIRTUALENV_DIRECTORY=$(MESOS_CLI_BUILDDIR) \
+	 $(MESOS_CLI_SRCDIR)/bootstrap
+	@echo "VERSION = \"$(PACKAGE_VERSION)\"" \
+	  > $(MESOS_CLI_BUILDDIR)/version.py
+	@source $(MESOS_CLI_SRCDIR)/activate; \
+	 pyinstaller --paths $(MESOS_CLI_SRCDIR)/lib \
+	             --paths $(MESOS_CLI_BUILDDIR) \
+	             $(MESOS_CLI_HIDDEN_IMPORTS) \
+	             --specpath $(MESOS_CLI_BUILDDIR) \
+	             --workpath $(MESOS_CLI_BUILDDIR)/work \
+	             --distpath $(builddir) \
+	             --name $(@) \
+	             --onefile \
+	             $(MESOS_CLI_SRCDIR)/bin/main.py
+else
 bin_PROGRAMS += mesos
 mesos_SOURCES = cli/mesos.cpp
 mesos_CPPFLAGS = $(MESOS_CPPFLAGS)
 mesos_LDADD = libmesos.la $(LDADD)
+endif
 
 bin_PROGRAMS += mesos-execute
 mesos_execute_SOURCES = cli/execute.cpp
@@ -2347,6 +2376,11 @@ uninstall-hook:
 # http://lists.gnu.org/archive/html/automake/2013-01/msg00051.html
 check-local: tests
 	$(TEST_DRIVER) ./mesos-tests
+if ENABLE_NEW_CLI
+	@echo ""
+	@source $(MESOS_CLI_SRCDIR)/activate; \
+	 python $(MESOS_CLI_SRCDIR)/bin/tests.py;
+endif
 
 if INSTALL_TESTS
 # If we enabled test installation, we can run the tests from the
