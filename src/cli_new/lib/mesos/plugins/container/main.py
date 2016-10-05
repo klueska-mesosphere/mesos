@@ -216,21 +216,15 @@ class Container(PluginBase):
         """
         Checks if call is for local agent or should we treat as a remote agent.
         """
-        addr = addr.split(":")[0]
+        localhosts = ["127.0.0.1", "localhost", "", "[::1]"]
+
         try:
-            process = subprocess.Popen("ifconfig | grep 'inet '", shell=True,
-                                       stdout=subprocess.PIPE)
-            output = process.communicate()[0].split('\n')
+            ip, _ = addr.rsplit(":", 1)
         except Exception as exception:
-            raise CLIException("Could not get set of IP's: {error}"
-                               .format(error=exception))
+            raise CLIException("Could not split ip/port from '{addr}': {error}"
+                               .format(addr=addr, error=exception))
 
-        ip_addr = []
-        for line in output:
-            if len(line) != 0:
-                ip_addr.append(line.strip().split(' ')[1].split(":")[1])
-
-        if addr in ip_addr:
+        if ip in localhosts:
             return False
 
         return True
