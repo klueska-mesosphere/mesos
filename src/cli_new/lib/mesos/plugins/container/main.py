@@ -20,6 +20,7 @@ The container plugin
 
 import ctypes
 import curses
+import glob
 import os
 import subprocess
 import sys
@@ -343,21 +344,60 @@ class Container(PluginBase):
                                .format(container=container["container_id"],
                                        error=exception))
 
-        try:
-            self.__nsenter(pid)
-        except Exception as exception:
-            raise CLIException("Unable to nsenter on pid '{pid}' for"
-                               " container '{container}': {error}"
-                               .format(container=container["container_id"],
-                                       pid=pid,
-                                       error=exception))
+        def enter_container():
+            """
+            Logic to actually enter a container for a newly executed command.
+            Entering the container involves adding the pid of the command to
+            all of the cgroups associated with the container as well as
+            entering all of its associated namespaces.
+            """
+
+            try:
+                cgroups = glob.glob("/sys/fs/cgroup/*/mesos/{container}/tasks"
+                                    .format(container=argv["<container-id>"]))
+            except Exception as exception:
+                raise CLIException("Unable to glob cgroup '{cgroup}' for"
+                                   " container '{container}': {error}"
+                                   .format(cgroup="cgroup",
+                                           container=argv["<container-id>"],
+                                           error=exception))
+
+            for cgroup in cgroups:
+                try:
+                    with open(cgroup, 'a') as f:
+                        f.write(str(os.getpid()))
+                except Exception as exception:
+                    raise CLIException("Unable to enter cgroup '{cgroup}' for"
+                                       " container '{container}': {error}"
+                                       .format(cgroup="cgroup",
+                                               container=argv["<container-id>"],
+                                               error=exception))
+
+            try:
+                self.__nsenter(pid)
+            except Exception as exception:
+                raise CLIException("Unable to nsenter on pid '{pid}' for"
+                                   " container '{container}': {error}"
+                                   .format(container=container["container_id"],
+                                           pid=pid,
+                                           error=exception))
 
         try:
             # The option to just return the output helps us in testing
             if "Record" in argv and argv["Record"]:
-                return subprocess.check_output(argv["<command>"])
+                process = subprocess.Popen(
+                    argv["<command>"],
+                    preexec_fn=enter_container,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE)
+
+                return "".join(process.communicate())
             else:
-                subprocess.call(argv["<command>"])
+                process = subprocess.Popen(
+                    argv["<command>"],
+                    preexec_fn=enter_container)
+
+                process.communicate()
         except Exception as exception:
             raise CLIException("Unable to execute command '{command}' for"
                                " container '{container}': {error}"
