@@ -203,6 +203,11 @@ AC_ARG_ENABLE([install-module-dependencies],
                               for module development]),
               [], [enable_install_module_dependencies=no])
 
+AC_ARG_ENABLE([new-cli],
+              AS_HELP_STRING([--enable-new-cli],
+                             [build new CLI instead of old CLI default: no]),
+              [enable_new_cli=yes], [])
+
 AC_ARG_ENABLE([optimize],
               AS_HELP_STRING([--enable-optimize],
                              [enable optimizations. If CFLAGS/CXXFLAGS are set,
@@ -2226,6 +2231,65 @@ correct if you're already doing this.
 fi
 
 AM_CONDITIONAL([HAS_PYTHON], [test "x$has_python" = "xyes"])
+
+
+# Check for all python dependencies required by the new CLI.
+if test "x$enable_new_cli" = "xyes"; then
+  if test "x$enable_python" != "xyes"; then
+    AM_PATH_PYTHON(,, [:])
+    if test "$PYTHON" = ":"; then
+      AC_MSG_ERROR([python not found
+-------------------------------------------------------------------
+The new CLI requires python version 2.6 or 2.7 in order to build.
+
+You may wish to set the PYTHON environment variable to an
+appropriate value if python is not installed in your PATH.
+-------------------------------------------------------------------
+      ])
+    fi
+  fi
+
+  AX_COMPARE_VERSION([$PYTHON_VERSION], [lt], [2.6],
+    AC_MSG_ERROR([python version too old
+-------------------------------------------------------------------
+The new CLI requires python version 2.6 or 2.7 in order to build.
+Your python version is $PYTHON_VERSION.
+
+You may wish to set the PYTHON environment variable to an
+appropriate value to assure the right python executable is found.
+-------------------------------------------------------------------
+      ])
+  )
+
+  AX_COMPARE_VERSION([$PYTHON_VERSION], [gt], [2.7],
+    AC_MSG_ERROR([python version too new
+-------------------------------------------------------------------
+The new CLI requires python version 2.6 or 2.7 in order to build.
+Your python version is $PYTHON_VERSION.
+
+You may wish to set the PYTHON environment variable to an
+appropriate value to assure the right python executable is found.
+-------------------------------------------------------------------
+      ])
+  )
+
+  AC_CHECK_PROG(VIRTUALENV_CHECK,virtualenv,yes)
+  if test "x$VIRTUALENV_CHECK" != "xyes" ; then
+    AC_MSG_ERROR([cannot find virtualenv
+-------------------------------------------------------------------
+The new CLI requires 'virtualenv' be installed as part of your
+python $PYTHON_VERSION installation.
+
+You may wish to install it via 'pip install virtualenv'.
+-------------------------------------------------------------------
+    ])
+  fi
+
+  new_cli=yes
+fi
+
+AM_CONDITIONAL([ENABLE_NEW_CLI], [test "x$new_cli" = "xyes"])
+
 
 AM_CONDITIONAL([WITH_BUNDLED_SETUPTOOLS],
     [test "x$with_bundled_setuptools" = "xyes"])
