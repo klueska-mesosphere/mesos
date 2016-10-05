@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+CURRDIR="$(cd "$(dirname "$0")" && pwd)"
+
+: ${BUILD_DIR:="${CURRDIR}/../../../build"}
+
+PATH="${BUILD_DIR}/bin:${BUILD_DIR}/src:$PATH"
+
+source ${CURRDIR}/../activate
+python ${CURRDIR}/tests.py "$@"
