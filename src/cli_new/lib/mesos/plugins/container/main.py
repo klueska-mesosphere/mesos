@@ -34,6 +34,8 @@ from mesos.exceptions import CLIException
 from mesos.plugins import PluginBase
 from mesos.util import Table
 
+import psutil
+
 
 PLUGIN_CLASS = "Container"
 PLUGIN_NAME = "container"
@@ -150,8 +152,55 @@ class Container(PluginBase):
         namespaces = ["ipc", "uts", "net", "pid", "mnt"]
 
         for namespace in namespaces:
+            # Find the path to the container's namespace.
             path = ("/proc/{pid}/ns/{namespace}"
                     .format(pid=pid, namespace=namespace))
+
+            # Special case the 'mnt' namespace to workaround MESOS-5727. To
+            # find the proper `mnt` namespace to enter, We need to recursively
+            # look at all children of the container's init-process and find
+            # the first `mnt` namespace that doesn't match the mount
+            # namespace of the init-process. If we find one, we enter it. If
+            # we don't find one, we enter the init-process's `mnt` namespace.
+            # In future versions of mesos, the pod-executor will become the
+            # default executor and we will always have a proper reference to
+            # the container whose `mnt` namespace we should enter (thereby
+            # removing the need for this ugly hack).
+            if namespace == "mnt":
+                try:
+                    parent_inode = os.stat(path).st_ino
+                except Exception as exception:
+                    raise CLIException("Unable to get the parent inode for"
+                                       " '{path}': {error}"
+                                       .format(path=path,
+                                               error=exception))
+
+                try:
+                    parent = psutil.Process(pid=int(pid))
+                    children = parent.children(recursive=True)
+                except Exception as exception:
+                    raise CLIException("Unable to get children of '{pid}'"
+                                       " for finding 'mnt' namespace: {error}"
+                                       .format(pid=pid,
+                                               error=exception))
+
+                for child_pid in [c.pid for c in children]:
+                    child_path = ("/proc/{pid}/ns/{namespace}"
+                                  .format(pid=child_pid, namespace=namespace))
+
+                    try:
+                        child_inode = os.stat(child_path).st_ino
+                    except Exception as exception:
+                        raise CLIException("Unable to get the child inode for"
+                                           " '{path}': {error}"
+                                           .format(path=child_path,
+                                                   error=exception))
+
+                    if parent_inode != child_inode:
+                        path = child_path
+                        break
+
+            # Enter the namespace.
             try:
                 file_d = open(path)
             except Exception as exception:
