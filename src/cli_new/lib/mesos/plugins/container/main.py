@@ -395,7 +395,7 @@ class Container(PluginBase):
 
         def enter_container():
             """
-            Logic to actually enter a container for a newly executed command.
+            Logic to actually enter a container and execute a command.
             Entering the container involves adding the pid of the command to
             all of the cgroups associated with the container as well as
             entering all of its associated namespaces.
@@ -431,33 +431,48 @@ class Container(PluginBase):
                                            pid=pid,
                                            error=exception))
 
+            try:
+                stdin = None
+                stdout = sys.stdout.fileno()
+                stderr = sys.stderr.fileno()
+
+                if "Record" in argv and argv["Record"]:
+                    stdin = subprocess.PIPE
+                    stdout = subprocess.PIPE
+                    stderr = subprocess.STDOUT
+
+                process = subprocess.Popen(
+                    argv["<command>"],
+                    close_fds=True,
+                    env={},
+                    stdin=stdin,
+                    stdout=stdout,
+                    stderr=stderr)
+
+                return "".join(filter(None, process.communicate()))
+            except Exception as exception:
+                raise CLIException("Unable to execute command '{command}' for"
+                                   " container '{container}': {error}"
+                                   .format(command=" ".join(argv["<command>"]),
+                                           container=container["container_id"],
+                                           error=exception))
+
+            # We ignore cases where it is normal
+            # to exit a program via <ctrl-C>.
+            except KeyboardInterrupt:
+                pass
+
+		# Fork a new process to safely enter the container without corrupting
+		# the top level CLI executable's cgroup and namespace membership.
         try:
-            # The option to just return the output helps us in testing
-            if "Record" in argv and argv["Record"]:
-                process = subprocess.Popen(
-                    argv["<command>"],
-                    preexec_fn=enter_container,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE)
-
-                return "".join(process.communicate())
-            else:
-                process = subprocess.Popen(
-                    argv["<command>"],
-                    preexec_fn=enter_container)
-
-                process.communicate()
+            process = Process(target=enter_container)
+            process.start()
+            process.join()
         except Exception as exception:
-            raise CLIException("Unable to execute command '{command}' for"
+            raise CLIException("Unable to start wrapper process to enter"
                                " container '{container}': {error}"
-                               .format(command=" ".join(argv["<command>"]),
-                                       container=container["container_id"],
+                               .format(container=container["container_id"],
                                        error=exception))
-
-        # We ignore cases where it is normal
-        # to exit a program via <ctrl-C>.
-        except KeyboardInterrupt:
-            pass
 
     def logs(self, argv):
         """
