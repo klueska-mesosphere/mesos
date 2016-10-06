@@ -144,14 +144,23 @@ class Container(PluginBase):
         if sys.platform != "linux2":
             raise CLIException("Unable to run command on non-linux system")
 
-    def __nsenter(self, pid):
+    def __enter_namespaces(self, pid, namespaces=None, exclude=None):
         """
-        Enter a process namespace.
+        Enter a process's namespaces.
         """
+        if namespaces is None:
+            namespaces = ["ipc", "uts", "net", "pid", "mnt"]
+
+        if exclude is None:
+            exclude = []
+
         libc = ctypes.CDLL("libc.so.6")
-        namespaces = ["ipc", "uts", "net", "pid", "mnt"]
 
         for namespace in namespaces:
+            # Exclude those namespaces in the `exclude` list.
+            if namespace in exclude:
+                continue
+
             # Find the path to the container's namespace.
             path = ("/proc/{pid}/ns/{namespace}"
                     .format(pid=pid, namespace=namespace))
@@ -181,8 +190,7 @@ class Container(PluginBase):
                 except Exception as exception:
                     raise CLIException("Unable to get children of '{pid}'"
                                        " for finding 'mnt' namespace: {error}"
-                                       .format(pid=pid,
-                                               error=exception))
+                                       .format(pid=pid, error=exception))
 
                 for child_pid in [c.pid for c in children]:
                     child_path = ("/proc/{pid}/ns/{namespace}"
@@ -200,7 +208,6 @@ class Container(PluginBase):
                         path = child_path
                         break
 
-            # Enter the namespace.
             try:
                 file_d = open(path)
             except Exception as exception:
@@ -211,6 +218,129 @@ class Container(PluginBase):
             if libc.setns(file_d.fileno(), 0) != 0:
                 raise CLIException("Failed to mount '{namespace}' namespace"
                                    .format(namespace=namespace))
+
+    def __enter_cgroups(self, container):
+        try:
+            cgroups = glob.glob("/sys/fs/cgroup/*/mesos/{container}/tasks"
+                                .format(container=container))
+        except Exception as exception:
+            raise CLIException("Unable to glob cgroup '{cgroup}' for"
+                               " container '{container}': {error}"
+                               .format(cgroup="cgroup",
+                                       container=container,
+                                       error=exception))
+
+        for cgroup in cgroups:
+            try:
+                with open(cgroup, 'a') as f:
+                    f.write(str(os.getpid()))
+            except Exception as exception:
+                raise CLIException("Unable to enter cgroup '{cgroup}' for"
+                                   " container '{container}': {error}"
+                                   .format(cgroup="cgroup",
+                                           container=container,
+                                           error=exception))
+
+    def __enter_container(self, pid, container, command, redirect_io=False):
+        """
+        Logic to actually enter a container and execute a command.
+        Entering the container involves adding the pid of the command to
+        all of the cgroups associated with the container as well as
+        entering all of its associated namespaces.
+        """
+
+        def enter_container_helper():
+            """
+			Call this helper from a forked process to safely enter the
+			container without corrupting the CLI's cgroup and namespace
+            membership.
+            """
+            try:
+                self.__enter_cgroups(container)
+            except Exception as exception:
+                raise CLIException("Unable to enter cgroups for '{pid}'"
+                                   " in container '{container}': {error}"
+                                   .format(container=container,
+                                           pid=pid,
+                                           error=exception))
+
+            try:
+                self.__enter_namespaces(pid, namespaces=["pid"])
+            except Exception as exception:
+                raise CLIException("Unable to enter namespaces for '{pid}'"
+                                   " in container '{container}': {error}"
+                                   .format(container=container,
+                                           pid=pid,
+                                           error=exception))
+
+            def enter_remaining_namespaces():
+                """
+				Helper function to enter all namespaces except the `pid`
+				namespace inside the pre-exec command of the subprocess (i.e.
+                after the fork, but before the exec).
+                """
+                try:
+                    self.__enter_namespaces(pid, exclude=["pid"])
+                except Exception as exception:
+                    raise CLIException("Unable to enter namespaces for '{pid}'"
+                                       " in container '{container}': {error}"
+                                       .format(container=container,
+                                               pid=pid,
+                                               error=exception))
+
+            try:
+                stdin = None
+                stdout = sys.stdout.fileno()
+                stderr = sys.stderr.fileno()
+
+                if io["redirect"]:
+                    stdin = subprocess.PIPE
+                    stdout = subprocess.PIPE
+                    stderr = subprocess.PIPE
+
+                process = subprocess.Popen(
+                    command,
+                    close_fds=True,
+                    env={},
+                    stdin=stdin,
+                    stdout=stdout,
+                    stderr=stderr,
+                    preexec_fn=enter_remaining_namespaces)
+
+                io["stdout"], io["stderr"] = process.communicate()
+            except Exception as exception:
+                io["exception"] = (
+                    CLIException("Unable to execute command '{command}'"
+                                 " inside container '{container}': {error}"
+                                 .format(command=" ".join(command),
+                                         container=container,
+                                         error=exception)))
+
+            # We ignore cases where it is normal
+            # to exit a program via <ctrl-C>.
+            except KeyboardInterrupt:
+                pass
+
+		# Fork a new process to run the helper command.
+        try:
+            io = Manager().dict()
+            io["redirect"] = redirect_io
+
+            process = Process(target=enter_container_helper)
+            process.start()
+            process.join()
+        except Exception as exception:
+            raise CLIException("Unable to start wrapper process to enter"
+                               " container '{container}' to run command"
+                               " '{command}': {error}"
+                               .format(container=container,
+                                       command=command,
+                                       error=exception))
+
+        if "exception" in io:
+            raise io["exception"]
+
+        return [io["stdout"], io["stderr"]]
 
     def __check_remote(self, addr):
         """
@@ -346,11 +476,10 @@ class Container(PluginBase):
 
         print str(table)
 
-    def execute(self, argv):
+    def execute(self, argv, redirect_io=False):
         """
-        Executes a command within a container. Gets the pid
-        of a container from the agent and calls nsenter on its
-        namepaces. Works only for the mesos containerizer.
+        Executes a command within a container.
+        Works only for the mesos containerizer.
         """
         try:
             if self.__check_remote(argv["--addr"]):
@@ -387,84 +516,17 @@ class Container(PluginBase):
                                .format(container=container["container_id"],
                                        error=exception))
 
-        def enter_container():
-            """
-            Logic to actually enter a container and execute a command.
-            Entering the container involves adding the pid of the command to
-            all of the cgroups associated with the container as well as
-            entering all of its associated namespaces.
-            """
-
-            try:
-                cgroups = glob.glob("/sys/fs/cgroup/*/mesos/{container}/tasks"
-                                    .format(container=argv["<container-id>"]))
-            except Exception as exception:
-                raise CLIException("Unable to glob cgroup '{cgroup}' for"
-                                   " container '{container}': {error}"
-                                   .format(cgroup="cgroup",
-                                           container=argv["<container-id>"],
-                                           error=exception))
-
-            for cgroup in cgroups:
-                try:
-                    with open(cgroup, 'a') as f:
-                        f.write(str(os.getpid()))
-                except Exception as exception:
-                    raise CLIException("Unable to enter cgroup '{cgroup}' for"
-                                       " container '{container}': {error}"
-                                       .format(cgroup="cgroup",
-                                               container=argv["<container-id>"],
-                                               error=exception))
-
-            try:
-                self.__nsenter(pid)
-            except Exception as exception:
-                raise CLIException("Unable to nsenter on pid '{pid}' for"
-                                   " container '{container}': {error}"
-                                   .format(container=container["container_id"],
-                                           pid=pid,
-                                           error=exception))
-
-            try:
-                stdin = None
-                stdout = sys.stdout.fileno()
-                stderr = sys.stderr.fileno()
-
-                if "Record" in argv and argv["Record"]:
-                    stdin = subprocess.PIPE
-                    stdout = subprocess.PIPE
-                    stderr = subprocess.STDOUT
-
-                process = subprocess.Popen(
-                    argv["<command>"],
-                    close_fds=True,
-                    env={},
-                    stdin=stdin,
-                    stdout=stdout,
-                    stderr=stderr)
-
-                return "".join(filter(None, process.communicate()))
-            except Exception as exception:
-                raise CLIException("Unable to execute command '{command}' for"
-                                   " container '{container}': {error}"
-                                   .format(command=" ".join(argv["<command>"]),
-                                           container=container["container_id"],
-                                           error=exception))
-
-            # We ignore cases where it is normal
-            # to exit a program via <ctrl-C>.
-            except KeyboardInterrupt:
-                pass
-
-		# Fork a new process to safely enter the container without corrupting
-		# the top level CLI executable's cgroup and namespace membership.
         try:
-            process = Process(target=enter_container)
-            process.start()
-            process.join()
+            output = self.__enter_container(
+                pid,
+                container["container_id"],
+                argv["<command>"],
+                redirect_io)
+
+            return "".join(filter(None, output))
         except Exception as exception:
-            raise CLIException("Unable to start wrapper process to enter"
-                               " container '{container}': {error}"
+            raise CLIException("Unable to enter container"
+                               " '{container}': {error}"
                                .format(container=container["container_id"],
                                        error=exception))
 
@@ -534,18 +596,13 @@ class Container(PluginBase):
         argv["<command>"] = ["ps", "-ax"]
 
         try:
-            # The option to just return the output helps us in testing
-            if "Record" in argv and argv["Record"]:
-                return self.execute(argv)
-            else:
-                self.execute(argv)
-
+            return self.execute(argv)
         except Exception as exception:
             raise CLIException("Unable to execute: {error}"
                                .format(error=exception))
 
     # pylint: disable=R0912,R0914,R0915
-    def stats(self, argv):
+    def stats(self, argv, redirect_io=False):
         """
         Displays statistics of one or multiple containers
         Uses the 'execute' command to retrieve container
@@ -580,37 +637,6 @@ class Container(PluginBase):
 
             pids[container["container_id"]] = pid
 
-        manager = Manager()
-        # pylint: disable=E1101
-        process_data = manager.dict()
-
-        def get_container_status(process_data):
-            """
-            We spawn a new subprocess inside our container `pid`
-            namespace and run `top` to gather system statistics and
-            print the information to the user. We continuously run this
-            process once every second until the user hits <ctrl-C>.
-            """
-            try:
-                self.__nsenter(process_data["pid"])
-            except Exception as exception:
-                sys.exit("Error in subprocess:"
-                         " Unable to nsenter: {error}"
-                         .format(error=exception))
-            except KeyboardInterrupt:
-                pass
-
-            command = ["top", "-b", "-d1", "-n1"]
-
-            try:
-                process_data["output"] = subprocess.check_output(command)
-            except Exception as exception:
-                sys.exit("Error in subprocess:"
-                         " Unable to run 'top': {error}"
-                         .format(error=exception))
-            except KeyboardInterrupt:
-                pass
-
         try:
             # We use `curses` to display the container statistics.
             try:
@@ -627,35 +653,24 @@ class Container(PluginBase):
 
                 for container, pid in pids.iteritems():
                     try:
-                        process_data['container'] = container
-                        process_data['pid'] = pid
-                        process_data["output"] = ""
-
-                        process = Process(target=get_container_status,
-                                          args=(process_data,))
-
-                        process.start()
-                        process.join()
+                        stdout, _ = self.__enter_container(
+                            pid, container, ["top", "-b", "-d1", "-n1"], True)
                     except Exception as exception:
-                        raise CLIException("Unable to run subprocess"
-                                           " inside container '{container}'"
-                                           " for pid '{pid}: {error}"
+                        raise CLIException("Unable to enter container"
+                                           " '{container}': {error}"
                                            .format(container=container,
-                                                   pid=pid,
                                                    error=exception))
 
-                    if not process_data["output"]:
+                    if not stdout:
                         raise CLIException("Unable to obtain output from"
-                                           " running subprocess inside"
                                            " container '{container}'"
-                                           " for pid '{pid}'"
-                                           .format(container=container,
-                                                   pid=pid))
+                                           .format(container=container))
 
                     # Parse relevant information from the top output
                     output += ("====== Container stats for {container} ======\n"
                                .format(container=container))
-                    lines = process_data['output'].split('\n')
+
+                    lines = stdout.split('\n')
                     lines.pop(0)
                     for line in lines:
                         if line == '':
@@ -667,7 +682,7 @@ class Container(PluginBase):
                 # Print the output to the `curses` screen.
                 try:
                     # The option to just return the output helps us in testing
-                    if "Record" in argv and argv["Record"]:
+                    if redirect_io:
                         curses.endwin()
                         return output
                     else:
