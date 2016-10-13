@@ -48,6 +48,9 @@ We categorize the changes as follows:
   <td style="word-wrap: break-word; overflow-wrap: break-word;"><!--Mesos Core-->
   </td>
   <td style="word-wrap: break-word; overflow-wrap: break-word;"><!--Flags-->
+    <ul style="padding-left:10px;">
+      <li>R <a href="#1-1-x-agent-runtime-dir">The agent `--runtime_dir` flag</a></li>
+    </ul>
   </td>
   <td style="word-wrap: break-word; overflow-wrap: break-word;"><!--Framework API-->
   </td>
@@ -214,6 +217,10 @@ We categorize the changes as follows:
 <a name="1-1-x-allocator-updateallocation"></a>
 
 * Mesos 1.1 adds an `offeredResources` argument to the `Allocator::updateAllocation()` method. It is used to indicate the resources that the operations passed to `updateAllocation()` are applied to. [MESOS-4431](https://issues.apache.org/jira/browse/MESOS-4431) (paticularly [/r/45961/](https://reviews.apache.org/r/45961/)) has more details on the motivation.
+
+<a name="1-1-x-agent-runtime-dir"></a>
+
+* Mesos 1.1 adds a new agent flag called `--runtime_dir`. Unlike `--work_dir` which persists data across reboots, `--runtime_dir` is designed to checkpoint state that should persist across agent restarts, but not across reboots.  By default this flag is set to `/var/run/mesos`. On many systems, this directroy is only accessible by the root user. If you launch the agent as a user other than root and you don't have permission to access `/var/run/mesos`, make sure to set `--runtime_dir` to a value other than the default.
 
 ## Upgrading from 0.28.x to 1.0.x ##
 
