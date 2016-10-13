@@ -51,6 +51,14 @@ public:
         "(Example: `/var/lib/mesos`)",
         path::join(os::temp(), "mesos", "local"));
 
+    add(&Flags::runtime_dir,
+        "runtime_dir",
+        "Path of the agent runtime directory. This is where runtime data\n"
+        "is stored by an agent that it needs to persist across crashes (but\n"
+        "not across reboots). This directory will be cleared on reboot.\n"
+        "(Example: `/var/run/mesos`)",
+        path::join(os::temp(), "mesos", "local"));
+
     add(&Flags::num_slaves,
         "num_slaves",
         "Number of agents to launch for local cluster",
@@ -58,6 +66,7 @@ public:
   }
 
   std::string work_dir;
+  std::string runtime_dir;
   int num_slaves;
 };
 
