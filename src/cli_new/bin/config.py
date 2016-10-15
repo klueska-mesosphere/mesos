@@ -42,6 +42,11 @@ except Exception:
 PLUGINS = []
 
 
+# Default agent parameters.
+AGENT_IP = "127.0.0.1"
+AGENT_PORT = "5051"
+
+
 # Allow extra plugins to be pulled in from a configuration file.
 if os.environ.get("MESOS_CLI_CONFIG_FILE"):
     try:
