@@ -99,6 +99,13 @@ class PluginBase(object):
         if hasattr(module, "USAGE"):
             self.USAGE = getattr(module, "USAGE")
 
+        config_vars = {}
+
+        for command in self.COMMANDS:
+            for flag in self.COMMANDS[command]["flags"]:
+                self.COMMANDS[command]["flags"][flag] = \
+                    self.COMMANDS[command]["flags"][flag].format(**config_vars)
+
         self.config = config
 
     def __autocomplete__(self, command, current_word, argv):
