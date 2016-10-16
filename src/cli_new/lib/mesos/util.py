@@ -22,7 +22,10 @@ import imp
 import importlib
 import os
 import re
+import sys
 import textwrap
+
+import netifaces
 
 from mesos.exceptions import CLIException
 
@@ -153,6 +156,47 @@ def format_subcommands_help(cmd):
         flag_string = flag_string.rstrip()
 
     return (arguments, short_help, long_help, flag_string)
+
+
+def verify_root():
+    """
+    Verify that this command is being executed by the root user.
+    """
+    if os.geteuid() != 0:
+        raise CLIException("Unable to run command as non-root user:"
+                           " Consider running with 'sudo'")
+
+def verify_linux():
+    """
+    Verify that this command is being executed on a Linux machine.
+    """
+    if sys.platform != "linux2":
+        raise CLIException("Unable to run command on non-linux system")
+
+def is_local(addr):
+    """
+    Checks if the agent address is local to the current machine or not.
+    """
+    try:
+        localhosts = []
+        for interface in netifaces.interfaces():
+            if netifaces.AF_INET in netifaces.ifaddresses(interface):
+                for link in netifaces.ifaddresses(interface)[netifaces.AF_INET]:
+                    localhosts.append(link["addr"])
+    except Exception as exception:
+        raise CLIException("Failed to determine list of localhost ips: {error}"
+                           .format(error=exception))
+
+    try:
+        ip, _ = addr.rsplit(":", 1)
+    except Exception as exception:
+        raise CLIException("Could not split ip/port from '{addr}': {error}"
+                           .format(addr=addr, error=exception))
+
+    if ip in localhosts:
+        return True
+
+    return False
 
 
 class Table(object):

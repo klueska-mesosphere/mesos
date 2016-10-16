@@ -32,6 +32,8 @@ import parse
 import mesos.http as http
 
 from mesos.exceptions import CLIException
+from mesos.util import verify_linux
+from mesos.util import verify_root
 
 
 class CLITestCase(unittest.TestCase):
@@ -41,6 +43,30 @@ class CLITestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         print "\n" + str(cls.__name__)
+
+    @staticmethod
+    def verify_root():
+        """
+        Decorator used to verify that the test suite has been launched
+        by the root user.
+        """
+        try:
+            verify_root()
+            return lambda func: func
+        except Exception:
+            return unittest.skip("Must be root")
+
+    @staticmethod
+    def verify_linux():
+        """
+        Decorator used to verify that the test suite has been launched
+        on a linux machine.
+        """
+        try:
+            verify_linux()
+            return lambda func: func
+        except Exception:
+            return unittest.skip("Must be linux")
 
 
 class Executable(object):
