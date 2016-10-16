@@ -38,8 +38,14 @@ except Exception:
     VERSION = "Development"
 
 
+# The top-level directory of this project.
+PROJECT_DIR = os.path.join(os.path.dirname(__file__), os.pardir)
+
+
 # The builtin plugins.
-PLUGINS = []
+PLUGINS = [
+    os.path.join(PROJECT_DIR, "lib/mesos/plugins", "container")
+]
 
 
 # Default agent parameters.

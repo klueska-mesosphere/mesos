@@ -15,20 +15,10 @@
 # limitations under the License.
 
 """
-This is the main executable of the mesos-cli unit tests.
+Containers module.
 """
 
-import unittest
+from . import tests
 
-from colour_runner.runner import ColourTextTestRunner
-
-from termcolor import colored
-
-# pylint: disable=unused-import
-from mesos.tests import TestInfrastructure
-from mesos.plugins.container.tests import TestContainerPlugin
-
-
-if __name__ == '__main__':
-    print colored("Running the Mesos CLI unit tests", "yellow")
-    unittest.main(verbosity=2, testRunner=ColourTextTestRunner)
+# pylint: disable=W0401
+from .main import *
