@@ -36,6 +36,7 @@ using process::Failure;
 using process::Future;
 using process::Owned;
 
+using mesos::slave::ContainerClass;
 using mesos::slave::ContainerConfig;
 using mesos::slave::ContainerLaunchInfo;
 using mesos::slave::ContainerState;
@@ -99,6 +100,17 @@ Future<Option<ContainerLaunchInfo>> VolumeSandboxPathIsolatorProcess::prepare(
   // nested). This information is important for looking up sandbox
   // locations for parent containers.
   sandboxes[containerId] = containerConfig.directory();
+
+  // We don't currently support mounting volumes in DEBUG containers.
+  if (containerId.has_parent() &&
+      containerConfig.has_container_class() &&
+      containerConfig.container_class() == ContainerClass::DEBUG) {
+    if (containerConfig.has_container_info() &&
+        containerConfig.container_info().volumes().size() > 0) {
+      return Failure("Volumes not supported for DEBUG containers");
+    }
+    return None();
+  }
 
   if (!containerConfig.has_container_info()) {
     return None();
