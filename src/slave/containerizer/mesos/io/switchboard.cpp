@@ -975,6 +975,7 @@ private:
   int stderrFromFd;
   int stderrToFd;
   unix::Socket socket;
+  Future<unix::Socket> accept;
   bool waitForConnection;
   Option<Duration> heartbeatInterval;
   bool inputConnected;
@@ -1210,6 +1211,8 @@ Future<Nothing> IOSwitchboardServerProcess::unblock()
 
 void IOSwitchboardServerProcess::finalize()
 {
+  accept.discard();
+
   foreach (HttpConnection& connection, outputConnections) {
     connection.close();
 
@@ -1251,8 +1254,9 @@ void IOSwitchboardServerProcess::heartbeatLoop()
 
 void IOSwitchboardServerProcess::acceptLoop()
 {
-  socket.accept()
-    .onAny(defer(self(), [this](const Future<unix::Socket>& socket) {
+  accept = socket.accept();
+
+  accept.onAny(defer(self(), [this](const Future<unix::Socket>& socket) {
       if (!socket.isReady()) {
         failure = Failure("Failed trying to accept connection");
         terminate(self(), false);
