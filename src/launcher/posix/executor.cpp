@@ -52,6 +52,7 @@ pid_t launchTaskPosix(
     const Option<string>& rootfs,
     const Option<string>& sandboxDirectory,
     const Option<string>& workingDirectory,
+    const Option<string>& ttySlavePath,
     const Option<CapabilityInfo>& capabilities)
 {
   // Prepare the flags to pass to the launch process.
@@ -103,6 +104,10 @@ pid_t launchTaskPosix(
 
   if (user.isSome()) {
     launchInfo.set_user(user.get());
+  }
+
+  if (ttySlavePath.isSome()) {
+    launchInfo.set_tty_slave_path(ttySlavePath.get());
   }
 
   if (capabilities.isSome()) {

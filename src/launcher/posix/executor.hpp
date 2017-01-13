@@ -33,6 +33,7 @@ pid_t launchTaskPosix(
     const Option<std::string>& rootfs,
     const Option<std::string>& sandboxDirectory,
     const Option<std::string>& workingDirectory,
+    const Option<std::string>& ttySlavePath,
     const Option<CapabilityInfo>& capabilities);
 
 } // namespace internal {

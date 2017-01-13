@@ -571,7 +571,9 @@ Try<Nothing> mountSpecialFilesystems(const string& root)
 }
 
 
-Try<Nothing> createStandardDevices(const string& root)
+Try<Nothing> createStandardDevices(
+    const string& root,
+    const Option<string>& console)
 {
   // List of standard devices useful for a chroot environment.
   // TODO(idownes): Make this list configurable.
@@ -613,6 +615,27 @@ Try<Nothing> createStandardDevices(const string& root)
     }
   }
 
+  // Set up `/dev/console`.
+  if (console.isSome()) {
+    Try<int> fd = os::open( path::join(root, "dev", "console"), O_CREAT);
+    if (fd.isError()) {
+      return Error("Failed to create '/dev/console' file in the container:"
+                   " " + fd.error());
+    }
+
+    Try<Nothing> mount = fs::mount(
+        console.get(),
+        path::join(root, "dev", "console"),
+        None(),
+        MS_BIND,
+        nullptr);
+
+    if (mount.isError()) {
+      return Error("Failed to bind mount '" + console.get() + "' on host"
+                   " to '/dev/console' in the container: " + mount.error());
+    }
+  }
+
   vector<SymLink> symlinks = {
     {"/proc/self/fd",   path::join(root, "dev", "fd")},
     {"/proc/self/fd/0", path::join(root, "dev", "stdin")},
@@ -629,7 +652,6 @@ Try<Nothing> createStandardDevices(const string& root)
     }
   }
 
-  // TODO(idownes): Set up console device.
   return Nothing();
 }
 
@@ -637,7 +659,7 @@ Try<Nothing> createStandardDevices(const string& root)
 
 
 // TODO(idownes): Add unit test.
-Try<Nothing> enter(const string& root)
+Try<Nothing> enter(const string& root, const Option<string>& console)
 {
   // Recursively mark current mounts as slaves to prevent propagation.
   Try<Nothing> mount =
@@ -661,7 +683,7 @@ Try<Nothing> enter(const string& root)
   }
 
   // Create basic device nodes.
-  Try<Nothing> create = internal::createStandardDevices(root);
+  Try<Nothing> create = internal::createStandardDevices(root, console);
   if (create.isError()) {
     return Error("Failed to create devices: " + create.error());
   }

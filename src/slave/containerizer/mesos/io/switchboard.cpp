@@ -447,6 +447,11 @@ Future<Option<ContainerLaunchInfo>> IOSwitchboard::_prepare(
     launchInfo.mutable_err()->set_fd(slave.get());
 
     launchInfo.set_tty_slave_path(slavePath.get());
+
+    if (containerConfig.has_task_info()) {
+      launchInfo.mutable_command()->add_arguments(
+          "--tty_slave_path=" + slavePath.get());
+    }
   } else {
     int infds[2];
     int outfds[2];

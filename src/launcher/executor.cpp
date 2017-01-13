@@ -120,6 +120,7 @@ public:
       const Option<string>& _workingDirectory,
       const Option<string>& _user,
       const Option<string>& _taskCommand,
+      const Option<string>& _ttySlavePath,
       const Option<CapabilityInfo>& _capabilities,
       const FrameworkID& _frameworkId,
       const ExecutorID& _executorId,
@@ -140,6 +141,7 @@ public:
       workingDirectory(_workingDirectory),
       user(_user),
       taskCommand(_taskCommand),
+      ttySlavePath(_ttySlavePath),
       capabilities(_capabilities),
       frameworkId(_frameworkId),
       executorId(_executorId),
@@ -403,6 +405,7 @@ protected:
         rootfs,
         sandboxDirectory,
         workingDirectory,
+        ttySlavePath,
         capabilities);
 #else
     // A Windows process is started using the `CREATE_SUSPENDED` flag
@@ -795,6 +798,7 @@ private:
   Option<string> workingDirectory;
   Option<string> user;
   Option<string> taskCommand;
+  Option<string> ttySlavePath;
   Option<CapabilityInfo> capabilities;
   const FrameworkID frameworkId;
   const ExecutorID executorId;
@@ -837,6 +841,10 @@ public:
         "If specified, this is the overrided command for launching the\n"
         "task (instead of the command from TaskInfo).");
 
+    add(&Flags::tty_slave_path,
+        "tty_slave_path",
+        "The slave path of the controlling pseudo terminal.");
+
     add(&Flags::capabilities,
         "capabilities",
         "Capabilities the command can use.");
@@ -855,6 +863,7 @@ public:
   Option<string> working_directory;
   Option<string> user;
   Option<string> task_command;
+  Option<string> tty_slave_path;
   Option<mesos::CapabilityInfo> capabilities;
   string launcher_dir;
 };
@@ -929,6 +938,7 @@ int main(int argc, char** argv)
           flags.working_directory,
           flags.user,
           flags.task_command,
+          flags.tty_slave_path,
           flags.capabilities,
           frameworkId,
           executorId,

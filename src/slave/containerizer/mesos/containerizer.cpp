@@ -1606,6 +1606,8 @@ Future<bool> MesosContainerizerProcess::_launch(
   argv[0] = MESOS_CONTAINERIZER;
   argv[1] = MesosContainerizerLaunch::NAME;
 
+  std::cout << launchInfo.working_directory() << std::endl;
+
   Try<pid_t> forked = launcher->fork(
       containerId,
       path::join(flags.launcher_dir, MESOS_CONTAINERIZER),

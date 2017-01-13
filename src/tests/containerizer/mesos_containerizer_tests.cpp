@@ -72,6 +72,8 @@ using mesos::internal::slave::state::FrameworkState;
 using mesos::internal::slave::state::RunState;
 using mesos::internal::slave::state::SlaveState;
 
+using mesos::master::detector::MasterDetector;
+
 using mesos::slave::ContainerConfig;
 using mesos::slave::ContainerLaunchInfo;
 using mesos::slave::ContainerLimitation;
@@ -253,6 +255,183 @@ TEST_F(MesosContainerizerTest, StatusWithContainerID)
   ASSERT_SOME(wait.get());
   ASSERT_TRUE(wait.get()->has_status());
   EXPECT_WTERMSIG_EQ(SIGKILL, wait.get()->status());
+}
+
+
+TEST_F(MesosContainerizerTest, ROOT_CGROUPS_CURL_INTERNET_AllocateTTY)
+{
+  Try<Owned<cluster::Master>> master = StartMaster();
+  ASSERT_SOME(master);
+
+  slave::Flags flags = CreateSlaveFlags();
+  flags.isolation = "docker/runtime,filesystem/linux";
+  flags.image_providers = "docker";
+
+  Owned<MasterDetector> detector = master.get()->createDetector();
+
+  Fetcher fetcher;
+
+  Try<MesosContainerizer*> _containerizer =
+    MesosContainerizer::create(flags, false, &fetcher);
+  ASSERT_SOME(_containerizer);
+
+  Owned<MesosContainerizer> containerizer(_containerizer.get());
+
+  Try<Owned<cluster::Slave>> slave = StartSlave(
+      detector.get(),
+      containerizer.get());
+  ASSERT_SOME(slave);
+
+  MockScheduler sched;
+
+  MesosSchedulerDriver driver(
+      &sched, DEFAULT_FRAMEWORK_INFO, master.get()->pid, DEFAULT_CREDENTIAL);
+
+  Future<Nothing> schedRegistered;
+  EXPECT_CALL(sched, registered(_, _, _))
+    .WillOnce(FutureSatisfy(&schedRegistered));
+
+  Future<vector<Offer>> offers;
+  EXPECT_CALL(sched, resourceOffers(_, _))
+    .WillOnce(FutureArg<1>(&offers))
+    .WillRepeatedly(Return());      // Ignore subsequent offers.
+
+  driver.start();
+
+  AWAIT_READY(schedRegistered);
+
+  AWAIT_READY(offers);
+  ASSERT_EQ(1u, offers->size());
+
+  // Use a pipe to synchronize with the top-level container.
+  int pipes[2] = {-1, -1};
+  ASSERT_SOME(os::pipe(pipes));
+
+  // Launch a command task within the `alpine` docker image. We run
+  // `tty` to verify that a TTY has been allocated to the container.
+  TaskInfo task = createTask(
+      offers->front().slave_id(),
+      offers->front().resources(),
+      "cat /proc/self/mountinfo >&" + stringify(pipes[1]) + ";"
+      "ls -la /dev/ >&" + stringify(pipes[1]) + ";"
+      "ls -la /dev/fd/0 >&" + stringify(pipes[1]) + ";"
+      "tty >&" + stringify(pipes[1]) + ";");
+
+  task.mutable_container()->CopyFrom(createContainerInfo("alpine"));
+
+  // Make sure a TTY is allocated to the container.
+  task.mutable_container()->mutable_tty_info();
+
+  Future<TaskStatus> statusRunning;
+  Future<TaskStatus> statusFinished;
+
+  EXPECT_CALL(sched, statusUpdate(&driver, _))
+    .WillOnce(FutureArg<1>(&statusRunning))
+    .WillOnce(FutureArg<1>(&statusFinished));
+
+  driver.launchTasks(offers->at(0).id(), {task});
+
+  // We wait wait up to 120 seconds
+  // to download the docker image.
+  AWAIT_READY_FOR(statusRunning, Seconds(120));
+  EXPECT_EQ(TASK_RUNNING, statusRunning->state());
+
+  os::close(pipes[1]);
+
+  Future<string> read = io::read(pipes[0]);
+  AWAIT_READY(read);
+  std::cout << read.get() << std::endl;
+  os::close(pipes[0]);
+
+//  ::sleep(1000);
+
+  // If the `tty` command failed, we would get `TASK_FAILED`.
+  AWAIT_READY(statusFinished);
+  EXPECT_EQ(TASK_FINISHED, statusFinished->state());
+
+  driver.stop();
+  driver.join();
+}
+
+
+TEST_F(MesosContainerizerTest, ROOT_CGROUPS_CURL_INTERNET_InjectConsole)
+{
+  Try<Owned<cluster::Master>> master = StartMaster();
+  ASSERT_SOME(master);
+
+  slave::Flags flags = CreateSlaveFlags();
+  flags.isolation = "docker/runtime,filesystem/linux";
+  flags.image_providers = "docker";
+
+  Owned<MasterDetector> detector = master.get()->createDetector();
+
+  Fetcher fetcher;
+
+  Try<MesosContainerizer*> _containerizer =
+    MesosContainerizer::create(flags, false, &fetcher);
+  ASSERT_SOME(_containerizer);
+
+  Owned<MesosContainerizer> containerizer(_containerizer.get());
+
+  Try<Owned<cluster::Slave>> slave = StartSlave(
+      detector.get(),
+      containerizer.get());
+  ASSERT_SOME(slave);
+
+  MockScheduler sched;
+
+  MesosSchedulerDriver driver(
+      &sched, DEFAULT_FRAMEWORK_INFO, master.get()->pid, DEFAULT_CREDENTIAL);
+
+  Future<Nothing> schedRegistered;
+  EXPECT_CALL(sched, registered(_, _, _))
+    .WillOnce(FutureSatisfy(&schedRegistered));
+
+  Future<vector<Offer>> offers;
+  EXPECT_CALL(sched, resourceOffers(_, _))
+    .WillOnce(FutureArg<1>(&offers))
+    .WillRepeatedly(Return());      // Ignore subsequent offers.
+
+  driver.start();
+
+  AWAIT_READY(schedRegistered);
+
+  AWAIT_READY(offers);
+  ASSERT_EQ(1u, offers->size());
+
+  // Launch a command task within the `alpine` docker image. We run
+  // `tty` to verify that a TTY has been allocated to the container
+  // and that the `/dev/console` device is properly injected.
+  TaskInfo task = createTask(
+      offers->front().slave_id(),
+      offers->front().resources(),
+      "ls /dev/console");
+
+  task.mutable_container()->CopyFrom(createContainerInfo("alpine"));
+
+  // Make sure a TTY is allocated to the container.
+  task.mutable_container()->mutable_tty_info();
+
+  Future<TaskStatus> statusRunning;
+  Future<TaskStatus> statusFinished;
+
+  EXPECT_CALL(sched, statusUpdate(&driver, _))
+    .WillOnce(FutureArg<1>(&statusRunning))
+    .WillOnce(FutureArg<1>(&statusFinished));
+
+  driver.launchTasks(offers->at(0).id(), {task});
+
+  // We wait wait up to 120 seconds
+  // to download the docker image.
+  AWAIT_READY_FOR(statusRunning, Seconds(120));
+  EXPECT_EQ(TASK_RUNNING, statusRunning->state());
+
+  // If `/dev/console` is not present this will return `TASK_FAILED`.
+  AWAIT_READY(statusFinished);
+  EXPECT_EQ(TASK_FINISHED, statusFinished->state());
+
+  driver.stop();
+  driver.join();
 }
 
 

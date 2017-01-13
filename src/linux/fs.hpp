@@ -346,7 +346,7 @@ namespace chroot {
 // namespace. Basic configuration of special filesystems and device
 // nodes is performed. Any mounts to the current root will be
 // unmounted.
-Try<Nothing> enter(const std::string& root);
+Try<Nothing> enter(const std::string& root, const Option<std::string>& console);
 
 } // namespace chroot {
 

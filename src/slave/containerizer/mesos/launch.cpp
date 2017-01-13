@@ -356,15 +356,22 @@ int MesosContainerizerLaunch::execute()
     }
   }
 
+  ::srand(::time(nullptr));
+  int fd = ::open(("/tmp/kevin-" + stringify(::rand())).c_str(), O_WRONLY | O_CREAT);
+  os::write(fd, stringify(flags.launch_info.get()) + "\n");
+
 #ifndef __WINDOWS__
-  if (launchInfo.has_tty_slave_path()) {
+  if (launchInfo.has_tty_slave_path() && !launchInfo.has_rootfs()) {
     Try<Nothing> setctty = os::setctty(STDIN_FILENO);
     if (setctty.isError()) {
       cerr << "Failed to set control tty: " << setctty.error() << endl;
+      os::write(fd, "Failed to set control tty: " + stringify(setctty.error()) + "\n");
       exitWithStatus(EXIT_FAILURE);
     }
   }
 #endif // __WINDOWS__
+
+  os::write(fd, "Past setting control tty\n");
 
   // Run additional preparation commands. These are run as the same
   // user and with the environment as the agent.
@@ -527,7 +534,11 @@ int MesosContainerizerLaunch::execute()
     }
 
 #ifdef __linux__
-    Try<Nothing> chroot = fs::chroot::enter(launchInfo.rootfs());
+    Try<Nothing> chroot = fs::chroot::enter(
+        launchInfo.rootfs(),
+        launchInfo.has_tty_slave_path() ?
+        Option<string>(launchInfo.tty_slave_path()) :
+        None());
 #else
     // For any other platform we'll just use POSIX chroot.
     Try<Nothing> chroot = os::chroot(launchInfo.rootfs());
