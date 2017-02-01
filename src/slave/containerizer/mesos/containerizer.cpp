@@ -1089,34 +1089,63 @@ Future<bool> MesosContainerizerProcess::launch(
 
   containers_.put(containerId, container);
 
-  // We'll first provision the image for the container, and
-  // then provision the images specified in `volumes` using
-  // the 'volume/image' isolator.
+  Future<bool> launched;
+
   if (!containerConfig.has_container_info() ||
       !containerConfig.container_info().mesos().has_image()) {
-    return prepare(containerId, None())
+    launched = prepare(containerId, None())
       .then(defer(self(),
                   &Self::_launch,
                   containerId,
                   environment,
                   slaveId,
                   checkpoint));
+  } else {
+    // We'll first provision the image for the container, and
+    // then provision the images specified in `volumes` using
+    // the 'volume/image' isolator.
+    container->provisioning = provisioner->provision(
+        containerId,
+        containerConfig.container_info().mesos().image());
+
+    launched = container->provisioning
+      .then(defer(self(),
+                  [=](const ProvisionInfo& provisionInfo) -> Future<bool> {
+        return prepare(containerId, provisionInfo)
+          .then(defer(self(),
+                      &Self::_launch,
+                      containerId,
+                      environment,
+                      slaveId,
+                      checkpoint));
+      }));
   }
 
-  container->provisioning = provisioner->provision(
-      containerId,
-      containerConfig.container_info().mesos().image());
+  return launched
+    .onAny(defer(self(), [container](Future<bool> future) {
+      // Close all FDs allocated to a container in the
+      // `launchInfo` returned from each isolator's prepare call().
+      if (!future.isReady() || !future.get()) {
+        foreach (const Option<ContainerLaunchInfo>& launchInfo,
+                 container->launchInfos.get()) {
+          if (launchInfo.isSome()) {
+            if (launchInfo->has_in() &&
+                launchInfo->in().type() == ContainerIO::FD) {
+              os::close(launchInfo->in().fd());
+            }
+            if (launchInfo->has_out() &&
+                launchInfo->out().type() == ContainerIO::FD) {
+              os::close(launchInfo->out().fd());
+            }
+            if (launchInfo->has_err() &&
+                launchInfo->err().type() == ContainerIO::FD) {
+              os::close(launchInfo->err().fd());
+            }
+          }
+        }
+      }
 
-  return container->provisioning
-    .then(defer(self(),
-                [=](const ProvisionInfo& provisionInfo) -> Future<bool> {
-      return prepare(containerId, provisionInfo)
-        .then(defer(self(),
-                    &Self::_launch,
-                    containerId,
-                    environment,
-                    slaveId,
-                    checkpoint));
+      return future;
     }));
 }
 
@@ -1326,7 +1355,6 @@ Future<bool> MesosContainerizerProcess::_launch(
   }
 
   // Determine the I/O for the container.
-  // TODO(jieyu): Close 'fd' on error before 'launcher->fork'.
   Option<Subprocess::IO> in;
   Option<Subprocess::IO> out;
   Option<Subprocess::IO> err;
