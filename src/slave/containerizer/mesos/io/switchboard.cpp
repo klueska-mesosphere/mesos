@@ -101,7 +101,6 @@ using process::network::internal::SocketImpl;
 
 using mesos::slave::ContainerConfig;
 using mesos::slave::ContainerClass;
-using mesos::slave::ContainerIO;
 using mesos::slave::ContainerLaunchInfo;
 using mesos::slave::ContainerLimitation;
 using mesos::slave::ContainerLogger;
@@ -264,6 +263,7 @@ Future<Option<ContainerLaunchInfo>> IOSwitchboard::prepare(
 {
   // In local mode, the container will inherit agent's stdio.
   if (local) {
+    containerIOs[containerId] = Owned<ContainerIO>(new ContainerIO());
     return None();
   }
 
@@ -305,42 +305,15 @@ Future<Option<ContainerLaunchInfo>> IOSwitchboard::_prepare(
                 containerConfig.container_info().has_tty_info();
 
   if (!IOSwitchboard::requiresServer(containerConfig)) {
-    ContainerLaunchInfo launchInfo;
+    CHECK(!containerIOs.contains(containerId));
 
-    ContainerIO* out = launchInfo.mutable_out();
-    ContainerIO* err = launchInfo.mutable_err();
+    ContainerIO* containerIO = new ContainerIO();
+    containerIO->in = std::move(loggerInfo.in);
+    containerIO->out = std::move(loggerInfo.out);
+    containerIO->err = std::move(loggerInfo.err);
+    containerIOs[containerId] = Owned<ContainerIO>(containerIO);
 
-    switch (loggerInfo.out.type()) {
-#ifndef __WINDOWS__
-      case ContainerLogger::SubprocessInfo::IO::Type::FD:
-        out->set_type(ContainerIO::FD);
-        out->set_fd(loggerInfo.out.fd().get());
-        break;
-#endif
-      case ContainerLogger::SubprocessInfo::IO::Type::PATH:
-        out->set_type(ContainerIO::PATH);
-        out->set_path(loggerInfo.out.path().get());
-        break;
-      default:
-        UNREACHABLE();
-    }
-
-    switch (loggerInfo.err.type()) {
-#ifndef __WINDOWS__
-      case ContainerLogger::SubprocessInfo::IO::Type::FD:
-        err->set_type(ContainerIO::FD);
-        err->set_fd(loggerInfo.err.fd().get());
-        break;
-#endif
-      case ContainerLogger::SubprocessInfo::IO::Type::PATH:
-        err->set_type(ContainerIO::PATH);
-        err->set_path(loggerInfo.err.path().get());
-        break;
-      default:
-        UNREACHABLE();
-    }
-
-    return launchInfo;
+    return ContainerLaunchInfo();
   }
 
 #ifndef __WINDOWS__
@@ -351,9 +324,16 @@ Future<Option<ContainerLaunchInfo>> IOSwitchboard::_prepare(
                    " '" + stringify(containerId) + "'");
   }
 
-  // Return the set of fds that should be sent to the
-  // container and dup'd onto its stdin/stdout/stderr.
+  // We need this so we can return the
+  // `tty_slave_path` if there is one.
   ContainerLaunchInfo launchInfo;
+
+  // We wrap this raw pointer in an `Owned<ContainerIO>` at
+  // the bottom of this function and assign it to the appropriate
+  // `containerIOs[containerid]`. We create the pointer here so we can
+  // populate it throughout this function and only store it back to
+  // the `containerIO` hashmap once we know this function has succeeded.
+  ContainerIO* containerIO = new ContainerIO();
 
   // Manually construct pipes instead of using `Subprocess::PIPE`
   // so that the ownership of the FDs is properly represented. The
@@ -443,14 +423,9 @@ Future<Option<ContainerLaunchInfo>> IOSwitchboard::_prepare(
     stdoutFromFd = master;
     stderrFromFd = master;
 
-    launchInfo.mutable_in()->set_type(ContainerIO::FD);
-    launchInfo.mutable_in()->set_fd(slave.get());
-
-    launchInfo.mutable_out()->set_type(ContainerIO::FD);
-    launchInfo.mutable_out()->set_fd(slave.get());
-
-    launchInfo.mutable_err()->set_type(ContainerIO::FD);
-    launchInfo.mutable_err()->set_fd(slave.get());
+    containerIO->in = ContainerIO::IO::FD(slave.get());
+    containerIO->out = containerIO->in;
+    containerIO->err = containerIO->in;
 
     launchInfo.set_tty_slave_path(slavePath.get());
   } else {
@@ -491,14 +466,9 @@ Future<Option<ContainerLaunchInfo>> IOSwitchboard::_prepare(
     stdoutFromFd = outfds[0];
     stderrFromFd = errfds[0];
 
-    launchInfo.mutable_in()->set_type(ContainerIO::FD);
-    launchInfo.mutable_in()->set_fd(infds[0]);
-
-    launchInfo.mutable_out()->set_type(ContainerIO::FD);
-    launchInfo.mutable_out()->set_fd(outfds[1]);
-
-    launchInfo.mutable_err()->set_type(ContainerIO::FD);
-    launchInfo.mutable_err()->set_fd(errfds[1]);
+    containerIO->in = ContainerIO::IO::FD(infds[0]);
+    containerIO->out = ContainerIO::IO::FD(outfds[1]);
+    containerIO->err = ContainerIO::IO::FD(errfds[1]);
   }
 
   // Make sure all file descriptors opened have CLOEXEC set.
@@ -653,12 +623,24 @@ Future<Option<ContainerLaunchInfo>> IOSwitchboard::_prepare(
         containerId,
         lambda::_1))));
 
+  // Populate the `containerIOs` hashmap.
+  containerIOs[containerId] = Owned<ContainerIO>(containerIO);
+
   return launchInfo;
 #endif // __WINDOWS__
 }
 
 
 Future<http::Connection> IOSwitchboard::connect(
+    const ContainerID& containerId)
+{
+  return dispatch(self(), [this, containerId] () {
+    return _connect(containerId);
+  });
+}
+
+
+Future<http::Connection> IOSwitchboard::_connect(
     const ContainerID& containerId)
 {
 #ifdef __WINDOWS__
@@ -710,6 +692,29 @@ Future<http::Connection> IOSwitchboard::connect(
       return http::connect(address.get(), http::Scheme::HTTP);
     }));
 #endif // __WINDOWS__
+}
+
+
+Future<Option<Owned<IOSwitchboard::ContainerIO>>>
+  IOSwitchboard::getContainerIO(const ContainerID& containerId)
+{
+  return dispatch(self(), [this, containerId] () {
+    return _getContainerIO(containerId);
+  });
+}
+
+
+Future<Option<Owned<IOSwitchboard::ContainerIO>>>
+  IOSwitchboard::_getContainerIO(const ContainerID& containerId)
+{
+  if (!containerIOs.contains(containerId)) {
+    return None();
+  }
+
+  Owned<IOSwitchboard::ContainerIO> containerIo = containerIOs[containerId];
+  containerIOs.erase(containerId);
+
+  return containerIo;
 }
 
 

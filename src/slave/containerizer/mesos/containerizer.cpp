@@ -129,7 +129,6 @@ using mesos::modules::ModuleManager;
 
 using mesos::slave::ContainerClass;
 using mesos::slave::ContainerConfig;
-using mesos::slave::ContainerIO;
 using mesos::slave::ContainerLaunchInfo;
 using mesos::slave::ContainerLimitation;
 using mesos::slave::ContainerState;
@@ -1095,9 +1094,13 @@ Future<bool> MesosContainerizerProcess::launch(
   if (!containerConfig.has_container_info() ||
       !containerConfig.container_info().mesos().has_image()) {
     return prepare(containerId, None())
+      .then(defer(self(), [this, containerId] () {
+        return ioSwitchboard->getContainerIO(containerId);
+      }))
       .then(defer(self(),
                   &Self::_launch,
                   containerId,
+                  lambda::_1,
                   environment,
                   slaveId,
                   checkpoint));
@@ -1111,9 +1114,13 @@ Future<bool> MesosContainerizerProcess::launch(
     .then(defer(self(),
                 [=](const ProvisionInfo& provisionInfo) -> Future<bool> {
       return prepare(containerId, provisionInfo)
+        .then(defer(self(), [this, containerId] () {
+          return ioSwitchboard->getContainerIO(containerId);
+        }))
         .then(defer(self(),
                     &Self::_launch,
                     containerId,
+                    lambda::_1,
                     environment,
                     slaveId,
                     checkpoint));
@@ -1242,6 +1249,7 @@ Future<Nothing> MesosContainerizerProcess::fetch(
 
 Future<bool> MesosContainerizerProcess::_launch(
     const ContainerID& containerId,
+    const Option<Owned<IOSwitchboard::ContainerIO>>& containerIo,
     const map<string, string>& environment,
     const SlaveID& slaveId,
     bool checkpoint)
@@ -1256,6 +1264,8 @@ Future<bool> MesosContainerizerProcess::_launch(
     return Failure("Container is being destroyed during preparing");
   }
 
+
+  CHECK(containerIo.isSome());
   CHECK_EQ(container->state, PREPARING);
   CHECK_READY(container->launchInfos);
 
@@ -1302,72 +1312,12 @@ Future<bool> MesosContainerizerProcess::_launch(
       return Failure("Multiple isolators specify rlimits");
     }
 
-    if (isolatorLaunchInfo->has_in() &&
-        launchInfo.has_in()) {
-      return Failure("Multiple isolators specify stdin");
-    }
-
-    if (isolatorLaunchInfo->has_out() &&
-        launchInfo.has_out()) {
-      return Failure("Multiple isolators specify stdout");
-    }
-
-    if (isolatorLaunchInfo->has_err() &&
-        launchInfo.has_err()) {
-      return Failure("Multiple isolators specify stderr");
-    }
-
     if (isolatorLaunchInfo->has_tty_slave_path() &&
         launchInfo.has_tty_slave_path()) {
       return Failure("Multiple isolators specify tty");
     }
 
     launchInfo.MergeFrom(isolatorLaunchInfo.get());
-  }
-
-  // Determine the I/O for the container.
-  // TODO(jieyu): Close 'fd' on error before 'launcher->fork'.
-  Option<Subprocess::IO> in;
-  Option<Subprocess::IO> out;
-  Option<Subprocess::IO> err;
-
-  if (launchInfo.has_in()) {
-    switch (launchInfo.in().type()) {
-      case ContainerIO::FD:
-        in = Subprocess::FD(launchInfo.in().fd(), Subprocess::IO::OWNED);
-        break;
-      case ContainerIO::PATH:
-        in = Subprocess::PATH(launchInfo.in().path());
-        break;
-      default:
-        break;
-    }
-  }
-
-  if (launchInfo.has_out()) {
-    switch (launchInfo.out().type()) {
-      case ContainerIO::FD:
-        out = Subprocess::FD(launchInfo.out().fd(), Subprocess::IO::OWNED);
-        break;
-      case ContainerIO::PATH:
-        out = Subprocess::PATH(launchInfo.out().path());
-        break;
-      default:
-        break;
-    }
-  }
-
-  if (launchInfo.has_err()) {
-    switch (launchInfo.err().type()) {
-      case ContainerIO::FD:
-        err = Subprocess::FD(launchInfo.err().fd(), Subprocess::IO::OWNED);
-        break;
-      case ContainerIO::PATH:
-        err = Subprocess::PATH(launchInfo.err().path());
-        break;
-      default:
-        break;
-    }
   }
 
   // Remove duplicated entries in enter and clone namespaces.
@@ -1608,9 +1558,9 @@ Future<bool> MesosContainerizerProcess::_launch(
       containerId,
       argv[0],
       argv,
-      in.isSome() ? in.get() : Subprocess::FD(STDIN_FILENO),
-      out.isSome() ? out.get() : Subprocess::FD(STDOUT_FILENO),
-      err.isSome() ? err.get() : Subprocess::FD(STDERR_FILENO),
+      containerIo.get()->in,
+      containerIo.get()->out,
+      containerIo.get()->err,
       nullptr,
       launchEnvironment,
       // 'enterNamespaces' will be ignored by PosixLauncher.
@@ -2129,6 +2079,14 @@ Future<bool> MesosContainerizerProcess::destroy(
 
   await(destroys)
     .then(defer(self(), [=](const list<Future<bool>>& futures) {
+      // We need to call `getContainerIO` here in case the
+      // `IOSwitchboard` still holds a reference to the containers's
+      // `ContainerIO` struct. We don't have to wait for this call's
+      // future to be satisified since we don't care about its value
+      // at this point. We just need to get ownership of the
+      // `ContainerIO` transfered to us so it can drop out of scope
+      // and all open file descriptors will be closed.
+      ioSwitchboard->getContainerIO(containerId);
       _destroy(containerId, previousState, futures);
       return Nothing();
     }));
