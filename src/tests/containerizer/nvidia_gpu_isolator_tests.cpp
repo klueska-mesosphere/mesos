@@ -420,6 +420,59 @@ TEST_F(NvidiaGpuTest, ROOT_CGROUPS_NVIDIA_GPU_GPUFilterEnabled)
 }
 
 
+// This test ensures that a scheduler can be allocated offers from GPU
+// agents without the `GPU_RESOURCES` framework capability, when setting
+// the master flag `--filter_gpu_resources=false`.
+TEST_F(NvidiaGpuTest, ROOT_CGROUPS_NVIDIA_GPU_GPUFilterDisabled)
+{
+  master::Flags masterFlags = CreateMasterFlags();
+  masterFlags.filter_gpu_resources = false;
+
+  Try<Owned<cluster::Master>> master = StartMaster(masterFlags);
+  ASSERT_SOME(master);
+
+  // Turn on Nvidia GPU isolation.
+  // Assume at least one GPU is available for isolation.
+  slave::Flags slaveFlags = CreateSlaveFlags();
+  slaveFlags.isolation = "filesystem/linux,cgroups/devices,gpu/nvidia";
+  slaveFlags.nvidia_gpu_devices = vector<unsigned int>({0u});
+  slaveFlags.resources = "gpus:1";
+
+  Owned<MasterDetector> detector = master.get()->createDetector();
+
+  Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
+  ASSERT_SOME(slave);
+
+  MockScheduler sched;
+
+  // Use `DEFAULT_FRAMEWORK_INFO` without
+  // setting the `GPU_RESOURCES` capability.
+  ASSERT_TRUE(DEFAULT_FRAMEWORK_INFO.capabilities().size() == 0);
+  MesosSchedulerDriver driver(
+      &sched, DEFAULT_FRAMEWORK_INFO, master.get()->pid, DEFAULT_CREDENTIAL);
+
+  Future<Nothing> schedRegistered;
+  EXPECT_CALL(sched, registered(_, _, _))
+    .WillOnce(FutureSatisfy(&schedRegistered));
+
+  Future<vector<Offer>> offers;
+  EXPECT_CALL(sched, resourceOffers(_, _))
+    .WillOnce(FutureArg<1>(&offers))
+    .WillRepeatedly(Return());      // Ignore subsequent offers.
+
+  driver.start();
+
+  AWAIT_READY(schedRegistered);
+
+  // Verify that the scheduler receives an offer.
+  AWAIT_READY(offers);
+  EXPECT_EQ(1u, offers->size());
+
+  driver.stop();
+  driver.join();
+}
+
+
 // Ensures that GPUs can be auto-discovered.
 TEST_F(NvidiaGpuTest, NVIDIA_GPU_Discovery)
 {
