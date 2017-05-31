@@ -25,6 +25,7 @@
 
 #include <mesos/master/detector.hpp>
 
+#include <process/clock.hpp>
 #include <process/future.hpp>
 #include <process/gtest.hpp>
 #include <process/owned.hpp>
@@ -58,6 +59,7 @@ using mesos::internal::slave::Slave;
 
 using mesos::master::detector::MasterDetector;
 
+using process::Clock;
 using process::Future;
 using process::Owned;
 
@@ -356,6 +358,62 @@ TEST_F(NvidiaGpuTest, ROOT_CGROUPS_NVIDIA_GPU_FractionalResources)
   EXPECT_TRUE(strings::contains(
       status->message(),
       "The 'gpus' resource must be an unsigned integer"));
+
+  driver.stop();
+  driver.join();
+}
+
+
+// This test ensures that a scheduler will not be allocated offers
+// from GPU agents without the `GPU_RESOURCES` framework capability,
+// when setting the master flag `--filter_gpu_resources=true`.
+TEST_F(NvidiaGpuTest, ROOT_CGROUPS_NVIDIA_GPU_GPUFilterEnabled)
+{
+  master::Flags masterFlags = CreateMasterFlags();
+  masterFlags.filter_gpu_resources = true;
+
+  Try<Owned<cluster::Master>> master = StartMaster(masterFlags);
+  ASSERT_SOME(master);
+
+  // Turn on Nvidia GPU isolation.
+  // Assume at least one GPU is available for isolation.
+  slave::Flags slaveFlags = CreateSlaveFlags();
+  slaveFlags.isolation = "filesystem/linux,cgroups/devices,gpu/nvidia";
+  slaveFlags.nvidia_gpu_devices = vector<unsigned int>({0u});
+  slaveFlags.resources = "gpus:1";
+
+  Owned<MasterDetector> detector = master.get()->createDetector();
+
+  Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
+  ASSERT_SOME(slave);
+
+  MockScheduler sched;
+
+  // Use `DEFAULT_FRAMEWORK_INFO` without
+  // setting the `GPU_RESOURCES` capability.
+  ASSERT_TRUE(DEFAULT_FRAMEWORK_INFO.capabilities().size() == 0);
+  MesosSchedulerDriver driver(
+      &sched, DEFAULT_FRAMEWORK_INFO, master.get()->pid, DEFAULT_CREDENTIAL);
+
+  Future<Nothing> schedRegistered;
+  EXPECT_CALL(sched, registered(_, _, _))
+    .WillOnce(FutureSatisfy(&schedRegistered));
+
+  // Expect the scheduler's `resourceOffers()` callback to never get invoked.
+  EXPECT_CALL(sched, resourceOffers(_, _))
+    .Times(0);
+
+  driver.start();
+
+  AWAIT_READY(schedRegistered);
+
+  // Pause the clock and advance it past the offer allocation interval.
+  Clock::pause();
+  Clock::advance(masterFlags.allocation_interval);
+
+  // Settle the clock and exit the test. The test will fail if the
+  // scheduler's `resourceOffers()` callback was ever invoked.
+  Clock::settle();
 
   driver.stop();
   driver.join();
