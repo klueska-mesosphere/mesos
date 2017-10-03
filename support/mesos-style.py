@@ -175,6 +175,10 @@ class LinterBase(object):
         if modified_files:
             basenames = [os.path.basename(path) for path in modified_files]
 
+            if 'bootstrap' in basenames:
+                print 'The "bootstrap" file has changed.'
+                return True
+
             if 'pip-requirements.txt' in basenames:
                 print 'The "pip-requirements.txt" file has changed.'
                 return True
