@@ -19,32 +19,22 @@
 import mock
 import pytest
 
-from mesos.exceptions import (HTTPException, MesosAuthenticationException,
-                              MesosAuthorizationException, MesosBadRequest,
-                              MesosUnprocessableException)
+from mesos.exceptions import HTTPException
 
 
-@pytest.mark.parametrize('exc,xpct_str', [
-    (HTTPException, 'Error while fetching http://some.url: '
-                    'HTTP 400: something bad happened'),
-    (MesosAuthenticationException, 'Authentication failed.'),
-    (MesosAuthorizationException, 'You are not authorized to perform this '
-                                  'operation.'),
-    (MesosBadRequest, 'Bad request.'),
-    (MesosUnprocessableException, 'Error while fetching http://some.url: '
-                                  'HTTP 400: something bad happened')
+@pytest.mark.parametrize("exception, exception_string", [
+    (HTTPException, "HTTP 400: Something bad happened")
 ])
-def test_exceptions(exc, xpct_str):
+def test_exceptions(exception, exception_string):
     """
     Test exceptions
     """
-    mock_resp = mock.Mock()
-    mock_resp.status_code = 400
-    mock_resp.reason = 'some_reason'
-    mock_resp.request.url = 'http://some.url'
-    mock_resp.text = 'something bad happened'
+    response = mock.Mock()
+    response.status_code = 400
+    response.reason = "some_reason"
+    response.request.url = "http://some.url"
+    response.text = "Something bad happened"
 
-    # Test MesosHTTPException
-    err = exc(mock_resp)
-    assert str(err) == xpct_str
-    assert err.status() == 400
+    error = exception(response)
+    assert str(error) == exception_string
+    assert error.status() == 400

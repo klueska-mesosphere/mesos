@@ -15,14 +15,11 @@
 # limitations under the License.
 
 """
-Exceptions Classes
+Exception Classes
 """
 
-from __future__ import absolute_import
-
-
 class MesosException(Exception):
-    """Exceptions class to handle all mesos errors."""
+    """Exceptions class to handle all mesos exceptions."""
     pass
 
 
@@ -47,43 +44,6 @@ class HTTPException(MesosException):
         return self.response.status_code
 
     def __str__(self):
-        return 'Error while fetching {url}: HTTP {status_code}: {reason}'\
-            .format(url=self.response.request.url,
-                    status_code=self.response.status_code,
-                    reason=self.response.text)
-
-
-class MesosAuthenticationException(HTTPException):
-    """
-    A wrapper around Response objects for HTTP Authentication errors (401).
-    """
-    def __str__(self):
-        return 'Authentication failed.'
-
-
-class MesosUnprocessableException(HTTPException):
-    """
-    A wrapper around Response objects for HTTP Unprocessable Entity error (422).
-    """
-    def __str__(self):
-        return 'Error while fetching {url}: HTTP {status_code}: {text}'.format(
-            url=self.response.request.url,
+        return "HTTP {status_code}: {text}".format(
             status_code=self.response.status_code,
-            text=self.response.text
-        )
-
-
-class MesosAuthorizationException(HTTPException):
-    """
-    A wrapper around Response objects for HTTP Authorization errors (403).
-    """
-    def __str__(self):
-        return 'You are not authorized to perform this operation.'
-
-
-class MesosBadRequest(HTTPException):
-    """
-    A wrapper around Response objects for HTTP Bad Request (400).
-    """
-    def __str__(self):
-        return 'Bad request.'
+            text=self.response.text)

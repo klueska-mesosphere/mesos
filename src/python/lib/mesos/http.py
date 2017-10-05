@@ -20,45 +20,46 @@
 Classes and functions for interacting with the Mesos HTTP restful API
 """
 
-from __future__ import absolute_import
-
+import copy
 import logging
-import urlparse
-
-# requests must be imported after all native packages
 import requests
 import tenacity
 import ujson
+import urlparse
 
-from mesos.exceptions import (HTTPException, MesosAuthenticationException,
-                              MesosAuthorizationException, MesosBadRequest,
-                              MesosUnprocessableException)
+from mesos.exceptions import HTTPException
+from mesos.exceptions import MesosException
 
-METHOD_HEAD = 'HEAD'
-METHOD_GET = 'GET'
-METHOD_POST = 'POST'
-METHOD_PUT = 'PUT'
-METHOD_PATCH = 'PATCH'
-METHOD_DELETE = 'DELETE'
+METHODS = ["HEAD", "GET", "POST", "PUT", "PATCH", "DELETE"]
 
 REQUEST_JSON_HEADERS = {'Accept': 'application/json'}
 REQUEST_GZIP_HEADERS = {'Accept-Encoding': 'gzip'}
 
-LOGGER = logging.getLogger(__name__)
+BASE_HEADERS = {}
+DEFAULT_TIMEOUT = 30
+DEFAULT_AUTH = None
+DEFAULT_USE_GZIP_ENCODING = None
+DEFAULT_MAX_ATTEMPTS = 3
 
 
-def simple_url_join(base_url, other_url):
+def simple_urljoin(base, other):
     """
-    Do a join by rstrip'ing / from base_url and lstrp'ing / from other_url.
+    Do a join by rstrip'ing '/' from base and lstrp'ing '/' from other.
 
-    This is needed since urlparse.urljoin tries to be too smart
-    and strips the subpath from base_url.
+    This function is needed since 'urlparse.urljoin' tries to be too
+    smart and strips the subpath from the base.
 
-    :type base_url: str
-    :type other_url: str
+    :type base: str
+    :type other: str
     :rtype: str
     """
-    return '/'.join([base_url.rstrip('/'), other_url.lstrip('/')])
+    try:
+        url = '/'.join([base.rstrip('/'), other.lstrip('/')])
+    except Exception as exception:
+        raise MesosException("Unable to join '{base}' with '{other}': {error}"
+                             .format(base=base, other=other, error=exception))
+
+    return url
 
 
 class Resource(object):
@@ -70,66 +71,170 @@ class Resource(object):
     request, and auth.
     """
 
-    def __init__(self, url, headers=None, timeout_secs=None, auth=None):
+    SUCCESS_CODES = frozenset(xrange(200, 300))
+
+    def __init__(self,
+                 url,
+                 base_headers=BASE_HEADERS,
+                 default_timeout=DEFAULT_TIMEOUT,
+                 default_auth=DEFAULT_AUTH,
+                 default_use_gzip_encoding=DEFAULT_USE_GZIP_ENCODING,
+                 default_max_attempts=DEFAULT_MAX_ATTEMPTS):
         """
         :param url: URL identifying the resource
         :type url: str
-        :param timeout_secs: timeout in seconds
-        :type timeout_secs: float
-        :param headers: headers to attache to requests
-        :type headers: dict[str, str]
-        :param auth: auth scheme
-        :type auth: requests.auth.AuthBase
+        :param base_headers: base headers to attach to all requests
+        :type base_headers: dict[str, str]
+        :param default_timeout: default timeout for requests in seconds
+        :type default_timeout: float
+        :param default_auth: default auth scheme for requests
+        :type default_auth: requests.auth.AuthBase
+        :param default_use_gzip_encoding: default boolean indicating whether to
+                                          pass gzip encoding in the request
+                                          headers or not
+        :type default use_gzip_encoding: boolean
+        :param max_attempts: maximum number of attempts to try for any request
+        :type max_attempts: int
         """
-        self.url = urlparse.urlparse(url)
-        self._timeout_secs = timeout_secs
-        self._auth = auth
 
-        # Init default headers
-        header_items = ()
-        if headers is not None:
-            header_items = headers.iteritems()
-        self._default_header_items = frozenset(header_items)
+        try:
+            self.url = urlparse.urlparse(url)
+        except Exception as exception:
+            raise MesosException("Cannot parse URL '{url}': {error}"
+                                 .format(url=url, error=exception))
 
-    def _default_headers(self):
-        """
-        Return a copy of the default headers.
+        self.base_headers = copy.deepcopy(base_headers)
+        self.default_timeout = default_timeout
+        self.default_auth = default_auth
+        self.default_use_gzip_encoding = default_use_gzip_encoding
+        self.default_max_attempts = default_max_attempts
 
-        :rtype: dict[str, str]
-        """
-        return dict(self._default_header_items)
 
-    def get_subresource(self, subpath):
+    def subresource(self, subpath):
         """
         Return a new Resource object at a subpath of the current resource's URL.
 
-        :param subpath: subpath of the resource
+        :param subpath: relative path of the subresource
         :type subpath: str
         :return: Resource at subpath
         :rtype: Resource
         """
-        return self.__class__(
-            url=simple_url_join(self.url.geturl(), subpath),
-            headers=self._default_headers(),
-            timeout_secs=self._timeout_secs,
-            auth=self._auth,
-        )
+        try:
+            url = simple_urljoin(self.url.geturl(), subpath)
+        except Exception as exception:
+            raise MesosException("Unable to join subpath for"
+                                 " subresource: {error}"
+                                 .format(error=exception))
 
-    def request(self,
-                method,
-                timeout_secs=None,
-                additional_headers=None,
-                params=None,
-                **kwargs):
+        return self.__class__(
+            url=url,
+            base_headers=self.base_headers,
+            default_timeout=self.default_timeout,
+            default_auth=self.default_auth,
+            default_use_gzip_encoding=self.default_use_gzip_encoding,
+            default_max_attempts=self.default_max_attempts)
+
+    def _request(self,
+                 method,
+                 additional_headers=None,
+                 timeout=None,
+                 auth=None,
+                 use_gzip_encoding=None,
+                 params=None,
+                 **kwargs):
         """
-        Make an HTTP request with given method and an optional timeout.
+        Make an HTTP request with the given method and an optional timeout.
 
         :param method: request method
         :type method: str
-        :param timeout_secs: timeout in seconds
-        :type timeout_secs: float
         :param additional_headers: additional headers to include in the request
         :type additional_headers: dict[str, str]
+        :param timeout: timeout in seconds for the request
+        :type timeout: float
+        :param auth: auth scheme for the request
+        :type auth: requests.auth.AuthBase
+        :param use_gzip_encoding: boolean indicating whether to
+                                  pass gzip encoding in the request
+                                  headers or not
+        :type use_gzip_encoding: boolean
+        :param params: parameters to include in the request
+        :type params: str | dict[str, T]
+        :param kwargs: additional arguments to pass to requests.request
+        :type kwargs: dict[str, T]
+        :return: HTTP response
+        :rtype: requests.Response
+        """
+        if method not in METHODS:
+            raise MesosException("Unknown HTTP Method '{method}'"
+                                 .format(method=method))
+
+        headers = copy.deepcopy(self.base_headers)
+        if additional_headers is not None:
+            headers.update(self.base_headers)
+
+        if timeout is None:
+            timeout = self.default_timeout
+
+        if auth is None:
+            auth = self.default_auth
+
+        if use_gzip_encoding is None:
+            use_gzip_encoding = self.default_use_gzip_encoding
+
+        if headers and use_gzip_encoding:
+            headers.update(REQUEST_GZIP_HEADERS)
+
+        kwargs = copy.deepcopy(kwargs)
+        kwargs.update({
+            "method" : method,
+            "headers" : headers,
+            "timeout" : timeout,
+            "auth" : auth,
+            "params" : params,
+            "url" : self.url.geturl()})
+
+        try:
+            response = requests.request(**kwargs)
+        except Exception as exception:
+            raise MesosException("Unable to retrieve resource"
+                                 " at '{url}': {error}"
+                                 .format(url=self.url.geturl(),
+                                         error=exception))
+
+        if response.status_code not in self.SUCCESS_CODES:
+            raise MesosException("Unsuccessful status code returned"
+                                 " from request at '{url}': {error}"
+                                 .format(url=self.url.geturl(),
+                                         error=HTTPException(response)))
+
+        return response
+
+    def request(self,
+                method,
+                additional_headers=None,
+                timeout=None,
+                auth=None,
+                use_gzip_encoding=None,
+                max_attempts=None,
+                params=None,
+                **kwargs):
+        """
+        Make an HTTP request by calling self._request with backoff retry.
+
+        :param method: request method
+        :type method: str
+        :param additional_headers: additional headers to include in the request
+        :type additional_headers: dict[str, str]
+        :param timeout: timeout in seconds
+        :type timeout: float
+        :param auth: auth scheme for the request
+        :type auth: requests.auth.AuthBase
+        :param use_gzip_encoding: boolean indicating whether to
+                                  pass gzip encoding in the request
+                                  headers or not
+        :type use_gzip_encoding: boolean
+        :param max_attempts: maximum number of attempts to try for any request
+        :type max_attempts: int
         :param params: additional params to include in the request
         :type params: str | dict[str, T]
         :param kwargs: additional arguments to pass to requests.request
@@ -137,34 +242,39 @@ class Resource(object):
         :return: HTTP response
         :rtype: requests.Response
         """
-        if timeout_secs is None:
-            timeout_secs = self._timeout_secs
 
-        headers = self._default_headers()
-        if additional_headers is not None:
-            headers.update(additional_headers)
+        if max_attempts is None:
+            max_attempts = self.default_max_attempts
 
-        LOGGER.info(
-            'Sending HTTP %r to %r: %r',
-            method,
-            self.url,
-            headers)
+        request_with_retry = tenacity.retry(
+            stop=tenacity.stop_after_attempt(max_attempts),
+            wait=tenacity.wait_exponential(),
+            retry=tenacity.retry_if_exception_type((
+                requests.exceptions.Timeout,
+            )),
+            reraise=True)(self._request)
 
-        request_kwargs = dict(
-            method=method,
-            url=self.url.geturl(),
-            headers=headers,
-            params=params,
-            timeout=timeout_secs,
-            auth=self._auth,
-        )
-        request_kwargs.update(kwargs)
+        try:
+            response = request_with_retry(
+                method=method,
+                additional_headers=additional_headers,
+                timeout=timeout,
+                auth=auth,
+                use_gzip_encoding=use_gzip_encoding,
+                params=params,
+                **kwargs)
+        except Exception as exception:
+            raise MesosException("Unable to request resource with max"
+                                 " attempts of '{max_attempts}': {error}"
+                                 .format(max_attempts=max_attempts,
+                                         error=exception))
 
-        return requests.request(**request_kwargs)
+        return response
 
     def request_json(self,
                      method,
-                     timeout_secs=None,
+                     timeout=None,
+                     auth=None,
                      payload=None,
                      decoder=None,
                      params=None,
@@ -174,8 +284,8 @@ class Resource(object):
 
         :param method: request method
         :type method: str
-        :param timeout_secs: timeout in seconds
-        :type timeout_secs: float
+        :param timeout: timeout in seconds
+        :type timeout: float
         :param payload: json payload in the request
         :type payload: dict[str, T] | str
         :param decoder: decoder for json response
@@ -187,50 +297,68 @@ class Resource(object):
         :return: JSON response
         :rtype: dict[str, T]
         """
-        resp = self.request(method=method,
-                            timeout_secs=timeout_secs,
-                            json=payload,
-                            additional_headers=REQUEST_JSON_HEADERS,
-                            params=params,
-                            **kwargs)
+        try:
+            response = self.request(method=method,
+                                    additional_headers=REQUEST_JSON_HEADERS,
+                                    timeout=timeout,
+                                    auth=auth,
+                                    use_gzip_encoding=False,
+                                    params=params,
+                                    json=payload,
+                                    **kwargs)
+        except Exception as exception:
+            raise MesosException("Request for JSON resource failed: {error}"
+                                 .format(error=exception))
 
         try:
-            obj = ujson.loads(resp.text)
-        except ValueError as exception:
-            raise HTTPException('Could not load JSON from "{data}": {error}'
-                                .format(data=resp.text, error=str(exception)))
+            json = ujson.loads(response.text)
+        except Exception as exception:
+            raise MesosException("Unable to load JSON from '{data}': {error}"
+                                .format(data=response.text, error=exception))
 
-        if decoder is not None:
-            return decoder(obj)
-        return obj
+        if decoder is None:
+            return json
 
-    def get_json(self, timeout_secs=None, decoder=None, params=None):
+        try:
+            json = decoder(json)
+        except Exception as exception:
+            raise MesosException("Unable to decode JSON '{json}': {error}"
+                                .format(json=json, error=exception))
+
+        return json
+
+    def get_json(self,
+                 timeout=None,
+                 decoder=None,
+                 params=None):
         """
-        Send a GET request.
+        Send a GET request for a JSON object.
 
-        :param timeout_secs: timeout in seconds
-        :type  timeout_secs: float
+        :param timeout: timeout in seconds
+        :type  timeout: float
         :param decoder: decoder for json response
         :type decoder: (dict) -> T
         :param params: additional params to include in the request
         :type params: str | dict[str, U]
         :rtype: dict[str, U]
+        :return: JSON response
+        :rtype: dict[str, T]
         """
-        return self.request_json(METHOD_GET,
-                                 timeout=timeout_secs,
+        return self.request_json(method="GET",
+                                 timeout=timeout,
                                  decoder=decoder,
                                  params=params)
 
     def post_json(self,
-                  timeout_secs=None,
+                  timeout=None,
                   payload=None,
                   decoder=None,
                   params=None):
         """
-        Sends a POST request.
+        Sends a POST request with a JSON object. Expects JSON in return.
 
-        :param timeout_secs: timeout in seconds
-        :type  timeout_secs: float
+        :param timeout: timeout in seconds
+        :type  timeout: float
         :param payload: post data
         :type  payload: dict[str, T] | str
         :param decoder: decoder for json response
@@ -238,154 +366,11 @@ class Resource(object):
         :param params: additional params to include in the request
         :type params: str | dict[str, T]
         :rtype: dict[str, T]
+        :return: JSON response
+        :rtype: dict[str, T]
         """
-        return self.request_json(METHOD_POST,
-                                 timeout=timeout_secs,
+        return self.request_json(method="POST",
+                                 timeout=timeout,
                                  payload=payload,
                                  decoder=decoder,
                                  params=params)
-
-
-class MesosResource(Resource):
-    """
-    Class adding the context necessary to talk to Mesos master and agent APIs.
-    """
-
-    SUCCESS_CODE_SET = frozenset(xrange(200, 300))
-    ERROR_CODE_MAP = {
-        400: MesosBadRequest,
-        401: MesosAuthenticationException,
-        403: MesosAuthorizationException,
-        422: MesosUnprocessableException,
-    }
-
-    def __init__(self,
-                 url,
-                 default_headers=None,
-                 default_timeout_secs=None,
-                 auth=None,
-                 use_gzip_encoding=True,
-                 num_attempts=3):
-        """
-        :param url: URL identifying the resource
-        :type url: str
-        :param default_timeout_secs: timeout in seconds
-        :type default_timeout_secs: float
-        :param default_headers: headers to attache to requests
-        :type default_headers: dict[str, str]
-        :param auth: auth scheme
-        :type auth: requests.auth.AuthBase
-        """
-        super(MesosResource, self).__init__(
-            url=url,
-            headers=default_headers,
-            timeout_secs=default_timeout_secs,
-            auth=auth,
-        )
-        self._use_gzip_encoding = use_gzip_encoding
-        self._num_attempts = num_attempts
-
-    def _request(self,
-                 method,
-                 timeout_secs=None,
-                 additional_headers=None,
-                 params=None,
-                 **kwargs):
-        """
-        Make an HTTP request with verb 'method' and an optional timeout.
-
-        Handle the response according to the returned status code, raising
-        corresponding subclasses of MesosException.
-
-        :param method: request method
-        :type method: str
-        :param timeout_secs: timeout in seconds
-        :type timeout_secs: float
-        :param additional_headers: additional headers to include in the request
-        :type additional_headers: dict[str, str]
-        :param params: additional params to include in the request
-        :type params: str | dict[str, T]
-        :param kwargs: additional arguments to pass to requests.request
-        :type kwargs: dict[str, T]
-        :return: HTTP response
-        :rtype: requests.Response
-        """
-        headers = {}
-
-        if self._use_gzip_encoding:
-            headers.update(REQUEST_GZIP_HEADERS)
-
-        if additional_headers is not None:
-            headers.update(additional_headers)
-
-        resp = super(MesosResource, self).request(
-            method=method,
-            timeout_secs=timeout_secs,
-            additional_headers=headers,
-            params=params,
-            **kwargs
-        )
-
-        # Handle response
-        if resp.status_code in self.SUCCESS_CODE_SET:
-            return resp
-        if resp.status_code in self.ERROR_CODE_MAP:
-            raise self.ERROR_CODE_MAP[resp.status_code](resp)
-
-        # Otherwise we got a response we don't know how to handle,
-        # raise HTTP exception
-        raise HTTPException(resp)
-
-    def request(self,
-                method,
-                timeout_secs=None,
-                additional_headers=None,
-                params=None,
-                **kwargs):
-        """
-        Make an HTTP request by calling self._request with backoff retry.
-
-        :param method: request method
-        :type method: str
-        :param timeout_secs: timeout in seconds, overrides default_timeout_secs
-        :type timeout_secs: float
-        :param additional_headers: additional headers to include in the request
-        :type additional_headers: dict[str, str]
-        :param params: additional params to include in the request
-        :type params: str | dict[str, T]
-        :param kwargs: additional arguments to pass to requests.request
-        :type kwargs: dict[str, T]
-        :return: HTTP response
-        :rtype: requests.Response
-        """
-        request_with_retry = tenacity.retry(
-            stop=tenacity.stop_after_attempt(self._num_attempts),
-            wait=tenacity.wait_exponential(),
-            retry=tenacity.retry_if_exception_type((
-                requests.exceptions.Timeout,
-            )),
-            reraise=True,
-        )(self._request)
-
-        try:
-            return request_with_retry(
-                method=method,
-                timeout_secs=timeout_secs,
-                additional_headers=additional_headers,
-                params=params,
-                **kwargs
-            )
-        except requests.exceptions.SSLError as err:
-            LOGGER.exception('HTTP SSL Error')
-            raise HTTPException('An SSL error occurred: {err}'.format(err=err))
-        except requests.exceptions.ConnectionError as err:
-            LOGGER.exception('HTTP Connection Error')
-            raise HTTPException('URL {url} is unreachable: {err}'
-                                .format(url=self.url.geturl(), err=err))
-        except requests.exceptions.Timeout:
-            LOGGER.exception('HTTP Timeout')
-            raise HTTPException('Request to URL {url} timed out.'
-                                .format(url=self.url))
-        except requests.exceptions.RequestException as err:
-            LOGGER.exception('HTTP Exception')
-            raise HTTPException('HTTP Exception: {err}'.format(err=err))
